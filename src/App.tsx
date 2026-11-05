@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowRight, BookOpen, Check, CheckCircle2, ChevronRight, CircleHelp,
-  Clock3, Cpu, Gauge, LayoutDashboard, Layers3, Leaf, LoaderCircle, Printer as PrinterIcon,
+  Activity, ArrowRight, BookOpen, Check, CheckCircle2, CircleHelp,
+  Cpu, LayoutDashboard, Layers3, LoaderCircle, Printer as PrinterIcon,
   RefreshCw, Settings2, ShieldCheck, TriangleAlert, Wifi, X,
 } from 'lucide-react';
 import { getPrinters, sendPrinterCommand } from './lib/api';
@@ -97,66 +97,54 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark"><Layers3 size={23} /></span><div><strong>竹控</strong><small>BAMBU FLEET</small></div></div>
-        <div className="workspace-switch"><span className="workspace-icon"><Leaf size={17} /></span><div><small>当前工作空间</small><strong>我的打印工作室</strong></div><ChevronRight size={15} /></div>
+        <a className="brand" href="#" aria-label="竹控工作台"><span className="brand-mark"><Layers3 size={25} strokeWidth={1.6} /></span><strong>竹控<span>STUDIO</span></strong></a>
         <nav className="main-nav" aria-label="主导航">
-          <span className="nav-label">控制台</span>
-          <button className="active"><LayoutDashboard size={18} /><span>打印总览</span><i>{printers.length}</i></button>
-          <button onClick={() => setModal('settings')}><PrinterIcon size={18} /><span>设备管理</span></button>
-          <button onClick={() => setModal('help')}><BookOpen size={18} /><span>接入指南</span></button>
+          <button className="active" title="打印工作台"><LayoutDashboard size={21} /><span>工作台</span></button>
+          <button onClick={() => setModal('settings')} title="设备管理"><PrinterIcon size={21} /><span>设备</span></button>
+          <button onClick={() => setModal('help')} title="接入指南"><BookOpen size={20} /><span>接入</span></button>
         </nav>
         <div className="sidebar-spacer" />
-        <div className="local-card"><ShieldCheck size={21} /><strong>数据留在本地</strong><p>设备状态与控制指令仅经过你的局域网。</p><span><i />LOCAL ONLY</span></div>
-        <button className="sidebar-settings" onClick={() => setModal('settings')}><Settings2 size={18} /><span>控制台设置</span><ChevronRight size={15} /></button>
-        <div className="sidebar-footer"><div className="avatar">ZL</div><div><strong>工作空间管理员</strong><small>本地控制台</small></div><span className="online-dot" /></div>
+        <div className="rail-network" title="本地网络"><Wifi size={19} /><span>LAN</span><i /></div>
+        <button className="sidebar-settings" onClick={() => setModal('settings')} aria-label="控制台设置"><Settings2 size={20} /></button>
+        <div className="avatar" title="本地工作空间">Z</div>
       </aside>
-
       <main className="main-panel">
         <header className="topbar">
-          <div className="breadcrumb"><span>我的工作空间</span><ChevronRight size={14} /><strong>打印总览</strong></div>
+          <div className="breadcrumb"><span className="studio-symbol">✳</span><strong>我的打印工作室</strong><span className="breadcrumb-slash">/</span><span>工作台</span></div>
           <div className="top-actions">
-            <span className={`mode-badge ${fleet.mode}`}><i />{fleet.mode === 'demo' ? '演示模式' : '真机模式'}</span>
-            <button className="top-icon" onClick={() => setModal('help')} aria-label="打开帮助"><CircleHelp size={19} /></button>
-            <button className={`top-icon ${refreshing ? 'is-refreshing' : ''}`} onClick={() => loadPrinters(true)} disabled={refreshing} aria-label="同步所有设备"><RefreshCw size={18} /></button>
+            <span className={'mode-badge ' + fleet.mode}><i />{fleet.mode === 'demo' ? '演示空间' : '局域网已接入'}</span>
+            <button className="top-icon" onClick={() => setModal('help')} aria-label="打开帮助"><CircleHelp size={18} /></button>
+            <button className="sync-button" onClick={() => loadPrinters(true)} disabled={refreshing}><RefreshCw size={14} className={refreshing ? 'spin' : ''} /><span>{refreshing ? '正在同步' : '同步设备'}</span><kbd>R</kbd></button>
           </div>
         </header>
-
         <div className="content-wrap">
           {error && <div className="connection-warning"><TriangleAlert size={16} />状态刷新失败：{error}<button onClick={() => loadPrinters(true)}>重试</button></div>}
           <section className="hero-section">
-            <div><div className="eyebrow"><span />LOCAL PRINT WORKSPACE</div><h1>双机打印，<em>一屏掌握。</em></h1><p>无需来回切换设备，让每一次打印都清晰可见、尽在掌控。</p></div>
-            <button className="primary-button sync-button" onClick={() => loadPrinters(true)} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''} />{refreshing ? '正在同步' : '同步设备状态'}<span className="key-hint">R</span></button>
+            <div><div className="eyebrow"><span />YOUR PERSONAL MICRO FACTORY</div><h1>打印工作台<span>.</span></h1><p>看见每台机器，让灵感逐层成型。</p></div>
+            <div className="workspace-metrics" aria-label="设备统计">
+              <div><span><Wifi size={12} />在线设备</span><strong>{String(online).padStart(2, '0')}<small> / {String(printers.length).padStart(2, '0')}</small></strong></div>
+              <div><span><Activity size={12} />正在打印</span><strong>{String(printing).padStart(2, '0')}<i className="metric-pulse" /></strong></div>
+              <div><span><Layers3 size={12} />在机耗材</span><strong>{String(trayCount).padStart(2, '0')}<small>卷</small></strong></div>
+            </div>
           </section>
-
-          <section className="stats-grid" aria-label="设备统计">
-            <div className="stat-card"><span className="stat-icon green"><Wifi size={20} /></span><div><small>在线设备</small><strong>{online}<span> / {printers.length}</span></strong></div><span className="stat-note positive"><i />{online === printers.length ? '全部在线' : '存在离线设备'}</span></div>
-            <div className="stat-card"><span className="stat-icon lime"><Activity size={20} /></span><div><small>正在打印</small><strong>{printing}<span> 台</span></strong></div><span className="stat-note">实时任务</span></div>
-            <div className="stat-card"><span className="stat-icon amber"><Layers3 size={20} /></span><div><small>在机耗材</small><strong>{trayCount}<span> 卷</span></strong></div><span className="stat-note">AMS 已同步</span></div>
-            <div className="stat-card"><span className="stat-icon blue"><Gauge size={20} /></span><div><small>设备利用率</small><strong>{printers.length ? Math.round((printing / printers.length) * 100) : 0}<span>%</span></strong></div><span className="stat-note">当前工作负载</span></div>
-          </section>
-
           <section className="fleet-section">
-            <div className="section-heading"><div><h2>设备总览</h2><span>{printers.length} 台打印机</span></div><div className="filter-tabs" aria-label="设备状态筛选">
-              {([['all', '全部'], ['printing', '打印中'], ['idle', '空闲']] as const).map(([key, label]) => <button key={key} className={filter === key ? 'active' : ''} onClick={() => setFilter(key)}>{label}<span>{key === 'all' ? printers.length : printers.filter((printer) => printer.status === key).length}</span></button>)}
+            <div className="section-heading"><div><h2>设备现场</h2><span>FLEET / {String(printers.length).padStart(2, '0')}</span></div><div className="filter-tabs" aria-label="设备状态筛选">
+              {([['all', '全部设备'], ['printing', '打印中'], ['idle', '待命']] as const).map(([key, label]) => <button key={key} className={filter === key ? 'active' : ''} onClick={() => setFilter(key)}>{label}<span>{key === 'all' ? printers.length : printers.filter(printer => printer.status === key).length}</span></button>)}
             </div></div>
-            {visible.length ? <div className="printer-grid">{visible.map((printer) => <PrinterCard key={printer.id} printer={printer} selected={selected?.id === printer.id} busy={busyIds.has(printer.id)} onSelect={() => setSelectedId(printer.id)} onCommand={(command, value) => handleCommand(printer.id, command, value)} onStop={() => setStopPrinter(printer)} />)}</div> : <div className="empty-filter"><CheckCircle2 size={25} /><strong>当前没有该状态的设备</strong><button onClick={() => setFilter('all')}>查看全部设备</button></div>}
+            {visible.length ? <div className="printer-grid">{visible.map(printer => <PrinterCard key={printer.id} printer={printer} index={printers.indexOf(printer) + 1} selected={selected?.id === printer.id} busy={busyIds.has(printer.id)} onSelect={() => setSelectedId(printer.id)} onCommand={(command, value) => handleCommand(printer.id, command, value)} onStop={() => setStopPrinter(printer)} />)}</div> : <div className="empty-filter"><CheckCircle2 size={25} /><strong>当前没有该状态的设备</strong><button onClick={() => setFilter('all')}>查看全部设备</button></div>}
           </section>
-
           {selected && <section className="lower-grid">
             <PrinterDetails printer={selected} />
             <aside className="activity-panel">
-              <div className="activity-heading"><div><span className="mini-label">LIVE FEED</span><h2>设备动态</h2></div><span className="live-indicator"><i />实时</span></div>
-              <div className="activity-device"><span className="small-printer-icon"><PrinterIcon size={17} /></span><div><strong>{selected.name}</strong><small>{selected.model}</small></div><button onClick={() => setSelectedId(selected.id)} aria-label="当前选中设备"><Check size={15} /></button></div>
-              <div className="timeline">
-                <div className="timeline-item current"><i /><div><strong>{selected.status === 'printing' ? '打印任务正在进行' : selected.status === 'paused' ? '打印任务已暂停' : selected.status === 'error' ? '打印任务异常，请检查设备' : selected.status === 'offline' ? '等待设备连接或状态回报' : '设备已准备就绪'}</strong><p>{selected.currentJob?.name ?? selected.lastJob ?? '等待打印机状态回报'}</p><span>最新状态</span></div></div>
-                <div className="timeline-item"><i /><div><strong>{selected.status === 'offline' ? '等待温度状态' : '当前温度已同步'}</strong><p>喷嘴 {Math.round(selected.temperatures.nozzle)}°C · 热床 {Math.round(selected.temperatures.bed)}°C</p><span>当前温度</span></div></div>
-                <div className="timeline-item"><i /><div><strong>腔灯已{selected.lightOn ? '开启' : '关闭'}</strong><p>{selected.speed.label}模式 · {selected.speed.percent}% 速度</p><span>设备设置</span></div></div>
-              </div>
-              <div className="activity-footer"><ShieldCheck size={15} /><span>所有操作均由本地服务发送</span></div>
+              <div className="activity-heading"><div><span className="mini-label">DEVICE INSIGHT</span><h2>运行摘要</h2></div><span className={'live-indicator ' + (selected.connected ? '' : 'offline')}><i />{selected.connected ? '已连接' : '离线'}</span></div>
+              <div className="activity-device"><span className="small-printer-icon"><PrinterIcon size={19} /></span><div><strong>{selected.name}</strong><small>{selected.model}</small></div><Check size={14} /></div>
+              <div className="insight-line"><span>当前状态</span><strong>{selected.status === 'printing' ? '正在打印' : selected.status === 'paused' ? '已暂停' : selected.status === 'error' ? '需要检查' : selected.status === 'offline' ? '等待连接' : '待命中'}</strong></div>
+              <div className="insight-line"><span>速度模式</span><strong>{selected.speed.label} · {selected.speed.percent}%</strong></div>
+              <div className="insight-line"><span>腔体照明</span><strong>{selected.lightOn ? '开启' : '关闭'}<i className={'light-indicator ' + (selected.lightOn ? 'on' : '')} /></strong></div>
+              <div className="activity-footer"><ShieldCheck size={14} /><span>本地连接 · 状态每 5 秒同步</span></div>
             </aside>
           </section>}
-
-          <footer className="page-footer"><span>竹控 · 为双机协作而生</span><span><i />每 5 秒自动同步 <b>·</b> v0.1.0</span></footer>
+          <footer className="page-footer"><span>竹控 STUDIO<span className="footer-divider">/</span>MADE FOR MAKERS.</span><span><i />LOCAL NETWORK ONLY<b>·</b>3D 机型示意</span></footer>
         </div>
       </main>
 
