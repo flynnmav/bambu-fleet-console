@@ -1,3 +1,52 @@
+.ams-system-panel { padding: 0 !important; }
+.ams-unit { padding: 20px 21px 17px; }
+.ams-unit + .ams-unit { border-top: 1px solid #333e40; }
+.ams-unit-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 19px; }
+.ams-unit-heading .mini-label { color: #748780; font-size: 8px; }
+.ams-unit-heading h3 { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; color: #e4ece0; font-size: 17px; font-weight: 500; letter-spacing: -.4px; }
+.ams-unit-heading h3 small { padding: 3px 5px; border: 1px solid #47543c; border-radius: 3px; color: #8f9c79; font-size: 8px; font-weight: 400; }
+.ams-connection { display: inline-flex; align-items: center; gap: 5px; color: #84968c; font-size: 9px; white-space: nowrap; }
+.ams-connection i { height: 5px; width: 5px; border-radius: 50%; background: #7b8a7e; }
+.ams-connection.online { color: #c6df9f; }
+.ams-connection.online i { background: #c4ed77; }
+.ams-connection.offline { color: #b29d7e; }
+.ams-connection.offline i { background: #b49d78; }
+.ams-telemetry { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; padding-bottom: 18px; margin-bottom: 16px; border-bottom: 1px solid #303a3b; }
+.ams-telemetry > div { min-width: 0; padding-right: 7px; }
+.ams-telemetry > div + div { padding-left: 12px; border-left: 1px solid #303a3b; }
+.ams-telemetry > div > span { display: flex; align-items: center; gap: 5px; margin-bottom: 13px; color: #8e9c96; font-size: 10px; }
+.ams-telemetry strong { display: block; color: #dce8d5; font-family: var(--mono); font-size: 23px; font-weight: 400; letter-spacing: -.8px; line-height: 1.2; }
+.ams-telemetry strong small { color: #7d8f81; font-size: 10px; letter-spacing: 0; }
+.ams-telemetry .drying-state { min-height: 28px; padding-top: 3px; font-family: inherit; font-size: 15px; letter-spacing: 0; }
+.ams-telemetry .drying-state.drying { color: #d4f75b; }
+.ams-telemetry .drying-state.error { color: #e2967e; }
+.ams-telemetry .drying-time { font-size: 19px; min-height: 28px; padding-top: 2px; }
+.ams-telemetry p { margin: 9px 0 0; color: #71827a; font-size: 8px; line-height: 1.5; }
+.ams-dry-detail { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-bottom: 15px; color: #84968a; font-size: 9px; }
+.rfid-status { display: block; padding-top: 9px; color: #708778; font-size: 7px; }
+.ams-tray-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: #9ba99c; font-size: 10px; }
+.ams-tray-heading > span { display: flex; align-items: center; gap: 6px; }
+.ams-tray-heading small { color: #687d70; font-size: 8px; }
+.ams-unit .tray-active { border-color: #9bb65f; background: linear-gradient(135deg,#33412588,#1b2620); }
+.tray-status { display: flex; align-items: center; gap: 5px; min-height: 13px; margin: -3px 0 12px; color: #81927e; font-size: 8px; }
+.tray-active .tray-status { color: #c6e98b; }
+.filament-id { display: block; margin-top: 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #60736b; font-family: var(--mono); font-size: 7px; }
+.ams-unit-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: #687d70; font-family: var(--mono); font-size: 8px; }
+.ams-unit-footer > span:last-child { display: inline-flex; align-items: center; gap: 5px; }
+.ams-data-note { padding: 0 21px; margin: 15px 0; color: #76887d; font-size: 9px; line-height: 1.7; }
+.ams-offline .ams-telemetry, .ams-offline .tray-grid { opacity: .55; }
+.ams-slots-empty { padding: 25px 10px; border: 1px dashed #3f4a43; border-radius: 5px; color: #85928a; font-size: 11px; text-align: center; }
+.ams-no-data { flex-direction: column; gap: 12px !important; min-height: 220px; color: #93a18e !important; text-align: center; }
+.ams-no-data strong { font-size: 13px; font-weight: 400; color: #d0dcc9; }
+.ams-no-data span { max-width: 380px; font-size: 10px; line-height: 1.7; }
+@media (max-width: 700px) {
+  .ams-unit { padding: 18px; }
+  .ams-unit-heading { align-items: flex-start; }
+  .ams-connection { font-size: 8px; }
+  .ams-telemetry { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 19px; }
+  .ams-telemetry > div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .ams-telemetry strong { font-size: 25px; }
+}
 :root {
   font-family: "Inter", "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   color: #e9eee7; background: #101315; font-synthesis: none; text-rendering: optimizeLegibility;

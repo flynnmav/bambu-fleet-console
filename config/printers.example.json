@@ -1,16 +1,16 @@
 [
   {
-    "id": "x1c",
+    "id": "h2s",
     "name": "打印机 1",
-    "model": "X1 Carbon",
+    "model": "H2S",
     "ip": "192.168.1.101",
     "serial": "替换为设备序列号",
     "accessCode": "替换为局域网访问码"
   },
   {
-    "id": "p1s",
+    "id": "a1",
     "name": "打印机 2",
-    "model": "P1S",
+    "model": "A1",
     "ip": "192.168.1.102",
     "serial": "替换为设备序列号",
     "accessCode": "替换为局域网访问码"

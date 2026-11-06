@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { PrinterStatus } from '../types';
 
-export type PrinterModelKind = 'x1-carbon' | 'p1s' | 'a1' | 'a1-mini' | 'generic';
+export type PrinterModelKind = 'h2s' | 'x1-carbon' | 'p1s' | 'a1' | 'a1-mini' | 'generic';
 
 export function identifyPrinterModel(name: string): { kind: PrinterModelKind; label: string } {
   const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (key.includes('h2s')) return { kind: 'h2s', label: 'H2S' };
   if (key.includes('x1carbon') || key.endsWith('x1c') || key === 'x1') return { kind: 'x1-carbon', label: 'X1 Carbon' };
   if (key.includes('p1s')) return { kind: 'p1s', label: 'P1S' };
   if (key.includes('a1mini')) return { kind: 'a1-mini', label: 'A1 mini' };
@@ -84,7 +85,7 @@ export function createPrinterModel(name: string): PrinterModel {
   };
   const tube = (points: THREE.Vector3[], radius: number, mat: THREE.Material, parent: THREE.Object3D = group) =>
     mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 32, radius, 8, false), mat, parent);
-  const text = (value: string, w: number, h: number, x: number, y: number, z: number, color = '#d4dbdc', background = '#182125') => {
+  const text = (value: string, w: number, h: number, x: number, y: number, z: number, color = '#d4dbdc', background = '#182125', parent: THREE.Object3D = group) => {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 128;
@@ -99,7 +100,7 @@ export function createPrinterModel(name: string): PrinterModel {
     context.fillText(value, 256, 67, 470);
     const map = new THREE.CanvasTexture(canvas);
     map.colorSpace = THREE.SRGBColorSpace;
-    const object = mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map, toneMapped: false }));
+    const object = mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map, toneMapped: false }), parent);
     object.position.set(x, y, z);
     object.castShadow = false;
   };
@@ -117,7 +118,8 @@ export function createPrinterModel(name: string): PrinterModel {
   let bedY = 0.65;
   let bedWidth = 1.78;
   let bedDepth = 1.62;
-  const enclosed = kind === 'x1-carbon' || kind === 'p1s';
+  const h2s = kind === 'h2s';
+  const enclosed = h2s || kind === 'x1-carbon' || kind === 'p1s';
   const mini = kind === 'a1-mini';
   const toolhead = new THREE.Group();
   const gantry = new THREE.Group();
@@ -125,7 +127,75 @@ export function createPrinterModel(name: string): PrinterModel {
   let headY = 2.18;
   let headZ = 0;
 
-  if (enclosed) {
+  if (h2s) {
+    // Approximate H2S, not CAD: 492 × 514 × 626 mm overall, 340 × 320 × 340 mm build space.
+    // Exterior / colours: https://us.store.bambulab.com/products/h2s
+    // Single nozzle: https://blog.bambulab.com/h2s-the-ultimate-single-nozzle-3d-printer-now-bigger-than-ever/
+    // Dimensions / 5-inch touchscreen: https://bambulab.cn/zh-cn/h2s/tech-specs
+    // Hinged screen above the glass door: https://wiki.bambulab.com/en/h2s/maintenance/replace-front-cover
+    const shell = material('#b0b2af', 0.18, 0.48);
+    feet(2.36, 2.46);
+    box(2.7, 0.26, 2.82, 0, 0.24, 0, shell);
+    box(2.5, 0.1, 2.6, 0, 0.42, 0, black);
+    // Tall grey side skins, dark upper frame and a recessed rear chamber panel.
+    for (const x of [-1.28, 1.28]) {
+      box(0.14, 2.77, 2.72, x, 1.79, 0, shell);
+      box(0.18, 0.27, 2.82, x, 3.25, 0, charcoal);
+      box(0.022, 2.53, 0.024, x * 1.06, 1.79, 0.95, black);
+      for (let i = 0; i < 9; i++) box(0.025, 0.024, 0.5, x * 1.06, 0.62 + i * 0.052, -0.78, black);
+    }
+    box(2.43, 2.72, 0.1, 0, 1.8, -1.34, charcoal);
+    for (const x of [-1.18, 1.18]) box(0.12, 2.71, 0.13, x, 1.78, 1.3, charcoal);
+    box(2.7, 0.33, 0.18, 0, 3.22, 1.32, charcoal);
+    box(2.7, 0.27, 0.18, 0, 3.25, -1.32, charcoal);
+    // Separate top glazing and rear vent panel; no assumed AMS count or placement.
+    box(2.35, 0.045, 2.18, 0, 3.42, 0.12, glass);
+    for (const x of [-1.2, 1.2]) box(0.055, 0.055, 2.36, x, 3.43, 0.08, black);
+    for (const z of [-1.09, 1.25]) box(2.43, 0.055, 0.055, 0, 3.43, z, black);
+    box(2.35, 0.055, 0.26, 0, 3.42, -1.22, charcoal);
+    for (let i = 0; i < 16; i++) box(0.065, 0.01, 0.18, -1.06 + i * 0.14, 3.454, -1.22, black);
+    // Broad front door, light outer pillars, dark border and vertical right-hand grip.
+    box(2.27, 2.55, 0.028, 0, 1.75, 1.395, glass);
+    for (const x of [-1.145, 1.145]) box(0.045, 2.59, 0.045, x, 1.75, 1.42, black);
+    for (const y of [0.46, 3.04]) box(2.33, 0.045, 0.045, 0, y, 1.42, black);
+    for (const y of [0.83, 2.65]) box(0.075, 0.22, 0.09, -1.15, y, 1.44, charcoal);
+    box(0.065, 0.55, 0.1, 1.04, 1.82, 1.49, charcoal);
+    for (const y of [1.58, 2.06]) box(0.1, 0.045, 0.12, 1.04, y, 1.45, black);
+    // H2S has its own landscape touch display at the upper right, unlike X1's left display.
+    const screen = new THREE.Group();
+    screen.name = 'H2S hinged touchscreen';
+    screen.position.set(0.79, 3.2, 1.47);
+    screen.rotation.x = -0.08;
+    group.add(screen);
+    box(0.38, 0.08, 0.13, 0, -0.18, -0.08, steel, screen);
+    box(0.79, 0.47, 0.1, 0, 0, 0, black, screen);
+    box(0.69, 0.37, 0.012, 0, 0, 0.058, charcoal, screen);
+    text('H2S', 0.59, 0.12, 0, 0.1, 0.067, '#dbe6e3', '#252b30', screen);
+    text('340 × 320 × 340', 0.6, 0.1, 0, -0.035, 0.067, '#9edbb7', '#252b30', screen);
+    box(0.49, 0.018, 0.012, 0, -0.135, 0.068, statusMaterial, screen);
+    text('H2S', 0.36, 0.2, -0.95, 3.22, 1.418, '#e4e6e2', '#252b30');
+    text('B A M B U  L A B', 0.91, 0.11, 0, 0.25, 1.419, '#555e5c', '#b0b2af');
+    box(2.39, 0.035, 0.035, 0, 0.4, 1.42, silver);
+    // Single-head CoreXY mechanics, a rear air duct, and chamber illumination.
+    for (const x of [-1.02, 1.02]) {
+      cylinder(0.03, 2.4, x, 1.71, -0.96, steel);
+      for (let i = 0; i < 30; i++) cylinder(0.038, 0.009, x, 0.55 + i * 0.078, -0.96, charcoal);
+      box(0.11, 0.12, 2.19, x, 2.77, 0, charcoal);
+      box(0.025, 0.025, 2.16, x - 0.07, 2.85, 0, rubber);
+    }
+    for (const z of [-0.13, 0.13]) cylinder(0.035, 2.13, 0, 2.77, z, steel, 'x', gantry);
+    for (const z of [-0.23, 0.23]) box(2.13, 0.025, 0.025, 0, 2.85, z, rubber, gantry);
+    box(0.25, 1.2, 0.14, 0.93, 1.6, -1.2, black);
+    for (let i = 0; i < 13; i++) box(0.21, 0.025, 0.025, 0.93, 1.08 + i * 0.085, -1.115, charcoal);
+    box(0.045, 0.04, 2.04, -1.14, 2.96, 0, ledMaterial);
+    box(0.16, 0.12, 0.1, -0.96, 2.95, -1.15, black);
+    cylinder(0.034, 0.018, -0.96, 2.95, -1.087, steel, 'z');
+    tube([new THREE.Vector3(0.04, 2.9, -0.04), new THREE.Vector3(-0.18, 3.17, -0.3), new THREE.Vector3(-0.75, 3.12, -1.1)], 0.025, white);
+    bedWidth = 2.05;
+    bedDepth = 1.93;
+    bedY = 1.1;
+    headY = 2.63;
+  } else if (enclosed) {
     const shell = kind === 'x1-carbon' ? silver : charcoal;
     feet(1.94, 1.75);
     box(2.4, 0.24, 2.18, 0, 0.22, 0, shell);
@@ -293,11 +363,24 @@ export function createPrinterModel(name: string): PrinterModel {
   for (let i = 0; i < 5; i++) box(0.26 - i * 0.033, 0.055, 0.26 - i * 0.033, 0.48, 0.064 + i * 0.055, -0.3, orangeMaterial, bed);
 
   toolhead.position.set(0.15, headY, headZ);
-  box(0.47, 0.38, 0.33, 0, 0.04, 0, enclosed ? charcoal : white, toolhead);
-  box(0.4, 0.2, 0.035, 0, 0.0, 0.19, black, toolhead);
-  cylinder(0.083, 0.026, 0, 0.015, 0.22, charcoal, 'z', toolhead);
-  cylinder(0.028, 0.03, 0, 0.015, 0.24, steel, 'z', toolhead);
-  for (let i = 0; i < 6; i++) box(0.26, 0.008, 0.02, 0, 0.2 - i * 0.026, 0.177, black, toolhead);
+  if (h2s) {
+    // H2S single-nozzle servo head: wider cooling shoulders and one central hotend.
+    toolhead.name = 'H2S single-nozzle toolhead';
+    box(0.54, 0.42, 0.37, 0, 0.06, 0, white, toolhead);
+    box(0.38, 0.28, 0.045, 0, 0.035, 0.208, charcoal, toolhead);
+    for (const x of [-0.23, 0.23]) {
+      box(0.12, 0.22, 0.21, x, -0.07, 0.09, charcoal, toolhead);
+      box(0.1, 0.055, 0.12, x * 0.67, -0.17, 0.1, black, toolhead);
+    }
+    for (let i = 0; i < 5; i++) box(0.27, 0.012, 0.014, 0, 0.135 - i * 0.045, 0.238, black, toolhead);
+    cylinder(0.039, 0.018, 0.16, -0.07, 0.252, steel, 'z', toolhead);
+  } else {
+    box(0.47, 0.38, 0.33, 0, 0.04, 0, enclosed ? charcoal : white, toolhead);
+    box(0.4, 0.2, 0.035, 0, 0.0, 0.19, black, toolhead);
+    cylinder(0.083, 0.026, 0, 0.015, 0.22, charcoal, 'z', toolhead);
+    cylinder(0.028, 0.03, 0, 0.015, 0.24, steel, 'z', toolhead);
+    for (let i = 0; i < 6; i++) box(0.26, 0.008, 0.02, 0, 0.2 - i * 0.026, 0.177, black, toolhead);
+  }
   box(0.16, 0.055, 0.14, 0, -0.18, 0, black, toolhead);
   const nozzle = mesh(new THREE.ConeGeometry(0.045, 0.085, 16), brass, toolhead);
   nozzle.rotation.z = Math.PI;
@@ -305,7 +388,7 @@ export function createPrinterModel(name: string): PrinterModel {
   box(0.13, 0.025, 0.02, 0.12, 0.18, 0.185, statusMaterial, toolhead);
 
   const chamber = new THREE.PointLight('#d6ffe7', 4, 4, 2);
-  chamber.position.set(-0.6, enclosed ? 2.48 : 2.6, 0.35);
+  chamber.position.set(-0.6, h2s ? 2.96 : enclosed ? 2.48 : 2.6, 0.35);
   group.add(chamber);
   const home = new THREE.Vector3(0.15, headY, headZ);
   let previousColor = '';

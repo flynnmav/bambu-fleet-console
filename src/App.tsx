@@ -70,7 +70,7 @@ function App() {
   const visible = printers.filter((printer) => filter === 'all' || printer.status === filter);
   const online = printers.filter((printer) => printer.connected).length;
   const printing = printers.filter((printer) => printer.status === 'printing').length;
-  const trayCount = printers.reduce((sum, printer) => sum + printer.ams.flatMap((unit) => unit.trays).filter((tray) => !tray.empty).length, 0);
+  const trayCount = printers.reduce((sum, printer) => sum + (printer.connected ? printer.ams.filter(unit => unit.present !== false).flatMap(unit => unit.trays).filter(tray => tray.empty === false).length : 0), 0);
 
   async function handleCommand(id: string, command: PrinterCommand, value?: boolean | number) {
     const printer = printers.find((item) => item.id === id);
@@ -124,7 +124,7 @@ function App() {
             <div className="workspace-metrics" aria-label="设备统计">
               <div><span><Wifi size={12} />在线设备</span><strong>{String(online).padStart(2, '0')}<small> / {String(printers.length).padStart(2, '0')}</small></strong></div>
               <div><span><Activity size={12} />正在打印</span><strong>{String(printing).padStart(2, '0')}<i className="metric-pulse" /></strong></div>
-              <div><span><Layers3 size={12} />在机耗材</span><strong>{String(trayCount).padStart(2, '0')}<small>卷</small></strong></div>
+              <div><span><Layers3 size={12} />已确认耗材</span><strong>{String(trayCount).padStart(2, '0')}<small>卷</small></strong></div>
             </div>
           </section>
           <section className="fleet-section">

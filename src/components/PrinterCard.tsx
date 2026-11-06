@@ -69,7 +69,7 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
         <div className="temperature-row">
           <div><span><Thermometer size={13} />喷嘴</span><strong>{Math.round(printer.temperatures.nozzle)}<small> / {Math.round(printer.temperatures.nozzleTarget)}°</small></strong></div>
           <div><span><Gauge size={13} />热床</span><strong>{Math.round(printer.temperatures.bed)}<small> / {Math.round(printer.temperatures.bedTarget)}°</small></strong></div>
-          <div><span><PrinterIcon size={13} />腔体</span><strong>{Math.round(printer.temperatures.chamber)}<small> °C</small></strong></div>
+          <div><span><PrinterIcon size={13} />腔体</span><strong>{printer.temperatures.chamber == null ? '—' : Math.round(printer.temperatures.chamber)}<small> °C</small></strong></div>
         </div>
       </div>
       {printer.lastCommand && ['rejected', 'unknown'].includes(printer.lastCommand.result) && <div className="command-warning" role="status"><TriangleAlert size={14} /><span>{printer.lastCommand.result === 'rejected' ? '设备拒绝指令' : '指令执行状态未知'}：{printer.lastCommand.reason}</span></div>}

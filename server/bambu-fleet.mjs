@@ -35,7 +35,10 @@ class BambuConnection {
       if (topic !== `device/${config.serial}/report`) return;
       try {
         const report = JSON.parse(payload.toString());
-        this.state = normalizeReport(this.state, report);
+        const previousPresence = this.state.amsState?.existBits;
+        this.state = normalizeReport(this.state, report, { amsModels: config.amsModels });
+        const presence = this.state.amsState?.existBits;
+        if (previousPresence != null && presence != null && presence !== '0' && presence !== previousPresence) this.requestVersions();
         const pending = this.state.lastCommand;
         const response = [report?.print, report?.system].find((item) => item?.result != null && pending && String(item.sequence_id) === pending.sequenceId && item.command === pending.command);
         if (response) {
@@ -63,6 +66,15 @@ class BambuConnection {
     this.client.publish(
       `device/${this.config.serial}/request`,
       JSON.stringify({ pushing: { command: 'pushall', sequence_id: String(++this.sequenceId), version: 1, push_target: 1 } }),
+      { qos: 1 },
+    );
+    this.requestVersions();
+  }
+
+  requestVersions() {
+    this.client.publish(
+      `device/${this.config.serial}/request`,
+      JSON.stringify({ info: { command: 'get_version', sequence_id: String(++this.sequenceId) } }),
       { qos: 1 },
     );
   }

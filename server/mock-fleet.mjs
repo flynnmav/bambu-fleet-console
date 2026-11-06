@@ -2,33 +2,28 @@ import { createCommand, SPEED_PROFILES } from './protocol.mjs';
 
 const initialPrinters = [
   {
-    id: 'x1c', name: '工作室 · 01', model: 'X1 Carbon', serial: 'DEMO-X1C-001', ip: '192.168.1.101',
+    id: 'h2s', name: 'H2S · 主力打印', model: 'H2S', serial: 'DEMO-H2S-001', ip: '192.168.1.101',
     status: 'printing', connected: true,
     currentJob: { name: '齿轮传动盒_v12.gcode', progress: 68, layerCurrent: 172, layerTotal: 252, elapsedMinutes: 112, remainingMinutes: 74 },
     lastJob: '旋翼固定座_v8.gcode',
     temperatures: { nozzle: 218, nozzleTarget: 220, bed: 55, bedTarget: 55, chamber: 36 },
     fans: { partCooling: 80, auxiliary: 60, chamber: 35 },
     speed: SPEED_PROFILES[2], speedLevel: 2, lightOn: true,
-    ams: [{ id: '0', humidity: '2', temperature: 29, trays: [
-      { id: '0', material: 'PLA Basic', color: '#252b29', remaining: 68 },
-      { id: '1', material: 'PLA Matte', color: '#e7e0d1', remaining: 82 },
-      { id: '2', material: 'PETG HF', color: '#e97848', remaining: 45 },
-      { id: '3', material: 'PLA Basic', color: '#4e8968', remaining: 73 },
+    ams: [{ id: '0', model: 'AMS 2 Pro', modelSource: 'reported', serial: 'DEMO-AMS2PRO-001', firmwareVersion: '03.00.00-DEMO', present: true, humidity: '2', humidityPercent: 18, temperature: 48.2, activeTrayId: '0', lastUpdated: new Date().toISOString(), drying: { supported: true, state: 'drying', rawState: 2, targetTemperature: 55, remainingMinutes: 110, durationHours: 2, filament: 'PETG', phase: 'heating', fan1: 'on', fan2: 'on' }, trays: [
+      { id: '0', empty: false, active: true, reading: false, filamentId: 'DEMO-FILAMENT-0', material: 'PLA Basic', color: '#252b29', remaining: 68 },
+      { id: '1', empty: false, active: false, reading: false, filamentId: 'DEMO-FILAMENT-1', material: 'PLA Matte', color: '#e7e0d1', remaining: 82 },
+      { id: '2', empty: false, active: false, reading: false, filamentId: 'DEMO-FILAMENT-2', material: 'PETG HF', color: '#e97848', remaining: 45 },
+      { id: '3', empty: false, active: false, reading: false, filamentId: 'DEMO-FILAMENT-3', material: 'PLA Basic', color: '#4e8968', remaining: 73 },
     ] }],
     lastUpdated: new Date().toISOString(),
   },
   {
-    id: 'p1s', name: '工作室 · 02', model: 'P1S', serial: 'DEMO-P1S-002', ip: '192.168.1.102',
+    id: 'a1', name: 'A1 · 桌面打印', model: 'A1', serial: 'DEMO-A1-002', ip: '192.168.1.102',
     status: 'idle', connected: true, currentJob: null, lastJob: '无人机电机座.gcode',
-    temperatures: { nozzle: 32, nozzleTarget: 0, bed: 31, bedTarget: 0, chamber: 29 },
+    temperatures: { nozzle: 32, nozzleTarget: 0, bed: 31, bedTarget: 0, chamber: null },
     fans: { partCooling: 0, auxiliary: 0, chamber: 0 },
     speed: SPEED_PROFILES[2], speedLevel: 2, lightOn: false,
-    ams: [{ id: '0', humidity: '1', temperature: 27, trays: [
-      { id: '0', material: 'PLA Basic', color: '#ddd8cc', remaining: 91 },
-      { id: '1', material: 'PLA Basic', color: '#303736', remaining: 57 },
-      { id: '2', material: 'PETG Basic', color: '#6a8fa5', remaining: 64 },
-      { id: '3', material: 'PLA Silk', color: '#b397c4', remaining: 38 },
-    ] }],
+    ams: [],
     lastUpdated: new Date().toISOString(),
   },
 ];

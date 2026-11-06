@@ -1,3 +1,5 @@
+import { emptyAmsState, invalidateAmsState, mergeAmsVersions, normalizeAmsReport } from './ams.mjs';
+
 export const SPEED_PROFILES = {
   1: { label: '静音', percent: 50 },
   2: { label: '标准', percent: 100 },
@@ -24,40 +26,6 @@ function fanPercent(value) {
   return Math.round(speed > 100 ? (speed / 255) * 100 : speed);
 }
 
-function normalizeAms(amsReport, previous = []) {
-  if (!Array.isArray(amsReport?.ams)) return previous;
-  const units = previous.map((unit) => ({ ...unit, trays: unit.trays.map((tray) => ({ ...tray })) }));
-  amsReport.ams.forEach((update, unitIndex) => {
-    const id = String(update.id ?? unitIndex);
-    const index = units.findIndex((unit) => unit.id === id);
-    const unit = index < 0
-      ? { id, humidity: null, temperature: 0, trays: [] }
-      : units[index];
-    if (update.humidity != null) unit.humidity = update.humidity;
-    unit.temperature = numeric(update.temp, unit.temperature);
-    if (Array.isArray(update.tray)) update.tray.forEach((tray, trayIndex) => {
-      const trayId = String(tray.id ?? trayIndex);
-      const position = unit.trays.findIndex((item) => item.id === trayId);
-      const old = position < 0
-        ? { id: trayId, material: '未知耗材', color: '#c8cec9', remaining: null, empty: true }
-        : unit.trays[position];
-      const next = { ...old };
-      if (tray.tray_type != null) {
-        next.material = tray.tray_type || '未知耗材';
-        next.empty = tray.tray_type === '';
-      }
-      if (/^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(tray.tray_color ?? '')) next.color = '#' + tray.tray_color.slice(0, 6);
-      if (tray.remain != null) next.remaining = Number(tray.remain) < 0 ? null : numeric(tray.remain, old.remaining);
-      if (next.empty) next.remaining = null;
-      if (position < 0) unit.trays.push(next);
-      else unit.trays[position] = next;
-    });
-    if (index < 0) units.push(unit);
-    else units[index] = unit;
-  });
-  return units;
-}
-
 export function emptyPrinter(config) {
   return {
     id: config.id,
@@ -69,21 +37,28 @@ export function emptyPrinter(config) {
     connected: false,
     currentJob: null,
     lastJob: null,
-    temperatures: { nozzle: 0, nozzleTarget: 0, bed: 0, bedTarget: 0, chamber: 0 },
+    temperatures: { nozzle: 0, nozzleTarget: 0, bed: 0, bedTarget: 0, chamber: null },
     fans: { partCooling: 0, auxiliary: 0, chamber: 0 },
     speed: SPEED_PROFILES[2],
     speedLevel: 2,
     lightOn: false,
     ams: [],
+    amsState: emptyAmsState(),
     lastUpdated: null,
     errorCode: null,
     lastCommand: null,
   };
 }
 
-export function normalizeReport(previous, report) {
+export function normalizeReport(previous, report, { amsModels = {} } = {}) {
   const next = { ...previous };
-  const print = report?.print;
+  if (report?.info?.command === 'get_version' && Array.isArray(report.info.module)) {
+    const versions = mergeAmsVersions(report.info.module, previous.ams);
+    const metadata = normalizeAmsReport({}, versions.units, invalidateAmsState(previous.amsState, versions.replacedIds), { amsModels });
+    next.ams = metadata.units;
+    next.amsState = metadata.state;
+  }
+  const print = report?.print && (report.print.result == null || report.print.command === 'push_status') ? report.print : null;
   if (print) {
     if (Object.keys(print).some((key) => !['command', 'sequence_id', 'result', 'reason', 'param'].includes(key))) next.lastUpdated = new Date().toISOString();
     if (print.print_error != null) next.errorCode = numeric(print.print_error, previous.errorCode);
@@ -109,7 +84,11 @@ export function normalizeReport(previous, report) {
       const chamberLight = print.lights_report.find((light) => light.node === 'chamber_light');
       if (chamberLight) next.lightOn = chamberLight.mode === 'on';
     }
-    if (print.ams) next.ams = normalizeAms(print.ams, previous.ams);
+    if (print.ams || print.ams_status != null || Array.isArray(print.device?.extruder?.info)) {
+      const ams = normalizeAmsReport(print.ams, next.ams, next.amsState, { amsModels, statusCode: print.ams_status, extruders: print.device?.extruder?.info });
+      next.ams = ams.units;
+      next.amsState = ams.state;
+    }
     const jobName = print.subtask_name || print.gcode_file;
     if (jobName || ['mc_percent', 'layer_num', 'total_layer_num', 'mc_remaining_time'].some((key) => print[key] != null)) {
       const oldJob = jobName && jobName !== previous.currentJob?.name ? {} : previous.currentJob || {};
