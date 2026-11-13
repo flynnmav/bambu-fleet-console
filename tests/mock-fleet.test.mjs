@@ -25,3 +25,15 @@ test('演示停止会清空当前任务并保留上一任务名称', async () =>
   assert.equal(printer.currentJob, null);
   assert.equal(printer.lastJob, '齿轮传动盒_v12.gcode');
 });
+
+test('演示步进更新温度并在订阅中通知监听者', async () => {
+  const fleet = new MockFleet();
+  let notified = 0;
+  const unsubscribe = fleet.subscribe(() => { notified += 1; });
+  for (let i = 0; i < 4; i++) fleet.step();
+  const printer = fleet.getPrinters()[0];
+  assert.equal(notified, 4);
+  assert.equal(printer.currentJob.progress, 69);
+  unsubscribe();
+  await fleet.close();
+});

@@ -31,6 +31,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
   const [autoRotate, setAutoRotate] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [restoreCount, setRestoreCount] = useState(0);
   const captionId = useId();
   const info = identifyPrinterModel(model);
   stateRef.current = { model, status, progress, lightOn, autoRotate };
@@ -164,6 +165,11 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       event.preventDefault();
       fail('WebGL 连接已中断，已切换为静态机型示意');
     };
+    const onContextRestored = () => {
+      contextLost = false;
+      setFailure(null);
+      setRestoreCount((count) => count + 1);
+    };
     const onControlStart = () => { interacting = true; requestRender(); };
     const onControlEnd = () => { interacting = false; settlingUntil = performance.now() + 650; requestRender(); };
     const onControlChange = () => requestRender();
@@ -195,9 +201,10 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       if (renderer) {
         const canvas = renderer.domElement;
         canvas.removeEventListener('webglcontextlost', onContextLost);
+        canvas.removeEventListener('webglcontextrestored', onContextRestored);
         renderer.renderLists.dispose();
         renderer.dispose();
-        renderer.forceContextLoss();
+        if (!contextLost) renderer.forceContextLoss();
         canvas.remove();
       }
     };
@@ -217,6 +224,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       canvas.setAttribute('aria-label', '打印机三维机型示意，可拖动旋转，方向键旋转，滚轮缩放');
       canvas.setAttribute('aria-describedby', captionId);
       canvas.addEventListener('webglcontextlost', onContextLost, false);
+      canvas.addEventListener('webglcontextrestored', onContextRestored, false);
       host.appendChild(canvas);
       pmrem = new THREE.PMREMGenerator(renderer);
       room = new RoomEnvironment();
@@ -313,9 +321,9 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       setFailure('当前设备无法启用 WebGL，显示静态机型示意');
     }
     return cleanup;
-    // Only mount/unmount owns the renderer. Props below update existing resources.
+    // Only mount/unmount (or context restore) owns the renderer. Props below update existing resources.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [restoreCount]);
 
   useEffect(() => {
     handleRef.current?.setModel(model);

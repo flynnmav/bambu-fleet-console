@@ -116,6 +116,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .filter-tabs button { display: flex; align-items: center; gap: 7px; height: 24px; padding: 0 9px; border: none; border-radius: 3px; color: #758477; background: transparent; font-size: 9px; }
 .filter-tabs button span { font-family: var(--mono); font-size: 8px; opacity: .6; }
 .filter-tabs button.active { color: #cbd9c1; background: #2b372c; }
+.filter-tabs button.has-alert:not(.active) { color: #e39680; }
+.filter-tabs button.has-alert span { opacity: 1; color: #e39680; }
 .printer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
 .printer-card { position: relative; min-width: 0; border: 1px solid #323935; border-radius: 13px; background: #191e20; box-shadow: 0 10px 30px #00000016; transition: border-color .2s; }
 .printer-card.selected { border-color: #626e49; }
@@ -265,6 +267,19 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outlin
 .activity-device strong { color: #bdcea4; font-size: 10px; font-weight: 400; }
 .activity-device small { font-family: var(--mono); color: #5c7449; font-size: 8px; }
 .activity-device > svg { color: #99ba6e; }
+.activity-progress { display: flex; align-items: center; gap: 14px; margin: 14px 0 16px; padding-bottom: 14px; border-bottom: 1px solid #2c3437; }
+.progress-ring { position: relative; width: 72px; height: 72px; flex: 0 0 72px; }
+.progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.progress-ring .ring-track { fill: none; stroke: #2c362e; stroke-width: 7; }
+.progress-ring .ring-value { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset .4s ease; }
+.progress-ring.is-paused .ring-value { stroke: #d5ad66; }
+.progress-ring .ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.progress-ring .ring-label strong { font-family: var(--mono); font-size: 16px; font-weight: 500; color: #e3ecdb; }
+.progress-ring .ring-label strong span { font-size: 9px; color: #8c9d7d; margin-left: 1px; }
+.progress-ring .ring-label small { margin-top: 3px; font-size: 8px; color: #718763; }
+.activity-progress-meta { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.activity-progress-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c7d4bd; font-size: 10px; font-weight: 500; }
+.activity-progress-meta span { color: #788c6b; font-size: 9px; font-family: var(--mono); }
 .insight-line { display: flex; justify-content: space-between; align-items: center; margin: 13px 0; font-size: 9px; color: #758e61; }
 .insight-line strong { display: flex; align-items: center; gap: 6px; color: #b5c99a; font-size: 9px; font-weight: 400; }
 .light-indicator { width: 4px; height: 4px; border-radius: 50%; background: #596647; }

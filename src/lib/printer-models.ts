@@ -86,20 +86,25 @@ export function createPrinterModel(name: string): PrinterModel {
   const tube = (points: THREE.Vector3[], radius: number, mat: THREE.Material, parent: THREE.Object3D = group) =>
     mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 32, radius, 8, false), mat, parent);
   const text = (value: string, w: number, h: number, x: number, y: number, z: number, color = '#d4dbdc', background = '#182125', parent: THREE.Object3D = group) => {
+    const compact = w < 0.5;
+    const canvasW = compact ? 256 : 512;
+    const canvasH = compact ? 64 : 128;
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
+    canvas.width = canvasW;
+    canvas.height = canvasH;
     const context = canvas.getContext('2d');
     if (!context) return;
     context.fillStyle = background;
-    context.fillRect(0, 0, 512, 128);
-    context.font = '600 42px Arial, sans-serif';
+    context.fillRect(0, 0, canvasW, canvasH);
+    context.font = `600 ${compact ? 22 : 42}px Arial, sans-serif`;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillStyle = color;
-    context.fillText(value, 256, 67, 470);
+    context.fillText(value, canvasW / 2, canvasH / 2 + 2, canvasW - (compact ? 22 : 42));
     const map = new THREE.CanvasTexture(canvas);
     map.colorSpace = THREE.SRGBColorSpace;
+    map.generateMipmaps = false;
+    map.minFilter = THREE.LinearFilter;
     const object = mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map, toneMapped: false }), parent);
     object.position.set(x, y, z);
     object.castShadow = false;

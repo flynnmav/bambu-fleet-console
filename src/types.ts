@@ -1,6 +1,17 @@
 export type PrinterStatus = 'printing' | 'idle' | 'paused' | 'offline' | 'error';
 export type PrinterCommand = 'pause' | 'resume' | 'stop' | 'light' | 'speed';
 
+export const SPEED_OPTIONS = [
+  { level: 1, label: '静音', percent: 50 },
+  { level: 2, label: '标准', percent: 100 },
+  { level: 3, label: '运动', percent: 124 },
+  { level: 4, label: '狂暴', percent: 166 },
+] as const;
+
+export const SPEED_PROFILES: Record<number, { label: string; percent: number }> = Object.fromEntries(
+  SPEED_OPTIONS.map(({ level, label, percent }) => [level, { label, percent }]),
+);
+
 export interface PrintJob {
   name: string;
   progress: number;
@@ -8,6 +19,7 @@ export interface PrintJob {
   layerTotal: number;
   elapsedMinutes: number;
   remainingMinutes: number;
+  startedAt?: string;
 }
 
 export interface AmsTray {
@@ -23,6 +35,8 @@ export interface AmsTray {
   tagUid?: string | null;
   observedTagUid?: string | null;
   trayUuid?: string | null;
+  observedTrayUuid?: string | null;
+  rawState?: number | null;
   readDone?: boolean | null;
   isBambu?: boolean | null;
 }
@@ -33,6 +47,7 @@ export interface AmsUnit {
   temperature: number | null;
   model?: string | null;
   modelSource?: 'reported' | 'configured' | null;
+  modelEvidence?: Record<string, string>;
   serial?: string | null;
   present?: boolean | null;
   firmwareVersion?: string | null;
@@ -59,6 +74,11 @@ export interface AmsUnit {
   trays: AmsTray[];
 }
 
+export interface ExtruderSlotRef {
+  unitId: string;
+  slotId: string;
+}
+
 export interface Printer {
   id: string;
   name: string;
@@ -66,6 +86,7 @@ export interface Printer {
   serial: string;
   ip: string;
   status: PrinterStatus;
+  preparing?: boolean;
   connected: boolean;
   currentJob: PrintJob | null;
   lastJob: string | null;
@@ -84,6 +105,12 @@ export interface Printer {
   amsState?: {
     trayNow: number | null;
     trayTarget: number | null;
+    existBits?: string | null;
+    trayExistBits?: string | null;
+    trayReadingBits?: string | null;
+    trayReadDoneBits?: string | null;
+    trayBambuBits?: string | null;
+    extruderSlots?: Record<string, ExtruderSlotRef | null>;
     activeSource: 'extruder' | 'legacy' | null;
     statusCode: number | null;
   };

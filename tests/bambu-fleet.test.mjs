@@ -35,12 +35,14 @@ function connect(client) {
   client.subscription.callback(null, [{ qos: 1 }]);
 }
 
-test('先订阅再请求状态，两台设备使用各自主题及序号', async () => {
+test('先订阅再请求状态，订阅完成前不标为已连接，两台设备使用各自主题及序号', async () => {
   const { fleet, clients } = fixture();
   clients[0].emit('connect');
+  assert.equal(fleet.getPrinters()[0].connected, false);
   assert.equal(clients[0].sent.length, 0);
   assert.equal(clients[0].subscription.topic, 'device/FIRST/report');
   clients[0].subscription.callback(null, [{ qos: 1 }]);
+  assert.equal(fleet.getPrinters()[0].connected, true);
   connect(clients[1]);
   await fleet.command('printer-0', 'pause');
   const pause = clients[0].sent.find(message => message.payload.print?.command === 'pause');
@@ -113,11 +115,26 @@ test('两台打印机的同号AMS单元仍按各自MQTT连接隔离', async () =
   await fleet.close();
 });
 
-test('AMS重新出现时只触发一次模块身份查询，不定时全量轮询', async () => {
+test('AMS重新出现时只触发一次模块身份查询，拔出不触发，不定时全量轮询', async () => {
   const { fleet, clients } = fixture();
   connect(clients[0]);
-  for (const mask of ['1', '0', '1', '1']) clients[0].emit('message', 'device/FIRST/report', Buffer.from(JSON.stringify({ print: { ams: { ams_exist_bits: mask } } })));
+  for (const mask of ['3', '1', '3', '3']) clients[0].emit('message', 'device/FIRST/report', Buffer.from(JSON.stringify({ print: { ams: { ams_exist_bits: mask } } })));
   assert.equal(clients[0].sent.filter(message => message.payload.info?.command === 'get_version').length, 2);
   assert.equal(clients[0].sent.filter(message => message.payload.pushing?.command === 'pushall').length, 1);
+  await fleet.close();
+});
+
+test('并发指令中先发送指令的拒绝回执不会被后续指令覆盖丢失', async () => {
+  const { fleet, clients } = fixture();
+  connect(clients[0]);
+  await fleet.command('printer-0', 'pause');
+  await fleet.command('printer-0', 'light', true);
+  assert.equal(fleet.getPrinters()[0].lastCommand.sequenceId, '4');
+  const rejectedPause = { print: { command: 'pause', sequence_id: '3', result: 'fail', reason: 'not printing' } };
+  clients[0].emit('message', 'device/FIRST/report', Buffer.from(JSON.stringify(rejectedPause)));
+  const last = fleet.getPrinters()[0].lastCommand;
+  assert.equal(last.sequenceId, '3');
+  assert.equal(last.result, 'rejected');
+  assert.equal(last.reason, 'not printing');
   await fleet.close();
 });

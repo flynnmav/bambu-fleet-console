@@ -12,9 +12,32 @@ export function getPrinters(): Promise<FleetResponse> {
 }
 
 export function sendPrinterCommand(id: string, command: PrinterCommand, value?: boolean | number): Promise<CommandResponse> {
-  return request<CommandResponse>(`/api/printers/${id}/commands`, {
+  return request<CommandResponse>(`/api/printers/${encodeURIComponent(id)}/commands`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, value }),
   });
+}
+
+export function subscribePrinters(
+  onUpdate: (data: FleetResponse) => void,
+  onError?: () => void,
+  onOpen?: () => void,
+): () => void {
+  if (typeof EventSource === 'undefined') {
+    onError?.();
+    return () => {};
+  }
+  const source = new EventSource('/api/printers/stream');
+  source.onopen = () => onOpen?.();
+  source.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as FleetResponse;
+      onUpdate(data);
+    } catch {
+      // ignore malformed event payload
+    }
+  };
+  source.onerror = () => onError?.();
+  return () => source.close();
 }

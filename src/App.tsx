@@ -4,23 +4,48 @@ import {
   Cpu, LayoutDashboard, Layers3, LoaderCircle, Printer as PrinterIcon,
   RefreshCw, Settings2, ShieldCheck, TriangleAlert, Wifi, X,
 } from 'lucide-react';
-import { getPrinters, sendPrinterCommand } from './lib/api';
-import type { FleetResponse, Printer, PrinterCommand, PrinterStatus } from './types';
+import { getPrinters, sendPrinterCommand, subscribePrinters } from './lib/api';
+import type { FleetResponse, Printer, PrinterCommand } from './types';
 import { PrinterCard } from './components/PrinterCard';
 import { PrinterDetails } from './components/PrinterDetails';
 import { Modal } from './components/Modal';
+import { ProgressRing } from './components/ProgressRing';
 
-type Filter = 'all' | PrinterStatus;
+type Filter = 'all' | 'printing' | 'paused' | 'idle' | 'error';
 type Toast = { id: number; message: string; kind: 'success' | 'error' };
+
+const FILTER_TABS: readonly { key: Filter; label: string }[] = [
+  { key: 'all', label: '全部设备' },
+  { key: 'printing', label: '打印中' },
+  { key: 'paused', label: '已暂停' },
+  { key: 'idle', label: '待命' },
+  { key: 'error', label: '异常/离线' },
+];
+
+function matchesFilter(printer: Printer, filter: Filter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'error') return printer.status === 'error' || printer.status === 'offline';
+  return printer.status === filter;
+}
+
+function formatMinutes(minutes: number): string {
+  if (minutes <= 0) return '0m';
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`;
+}
 
 function App() {
   const [fleet, setFleet] = useState<FleetResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const commandLocks = useRef(new Set<string>());
+  const fetchingRef = useRef(false);
+  const sseConnectedRef = useRef(false);
+  const notifiedRejectionsRef = useRef(new Map<string, string>());
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<'settings' | 'help' | null>(null);
   const [stopPrinter, setStopPrinter] = useState<Printer | null>(null);
@@ -30,30 +55,70 @@ function App() {
     setToast({ id: Date.now(), message, kind });
   }, []);
 
+  const applyFleet = useCallback((data: FleetResponse) => {
+    setFleet(data);
+    setSelectedId((current) => current ?? data.printers[0]?.id ?? null);
+    setError('');
+    setLoading(false);
+  }, []);
+
   const loadPrinters = useCallback(async (manual = false) => {
+    if (fetchingRef.current && !manual) return;
+    fetchingRef.current = true;
     if (manual) setRefreshing(true);
     try {
       const data = await getPrinters();
-      setFleet(data);
-      setSelectedId((current) => current ?? data.printers[0]?.id ?? null);
-      setError('');
+      applyFleet(data);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '无法连接本地服务');
     } finally {
+      fetchingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [applyFleet]);
 
   useEffect(() => {
     loadPrinters();
-    const interval = window.setInterval(() => loadPrinters(), 5000);
-    return () => window.clearInterval(interval);
-  }, [loadPrinters]);
+    const unsubscribe = subscribePrinters(
+      (data) => {
+        sseConnectedRef.current = true;
+        setSseConnected(true);
+        applyFleet(data);
+      },
+      () => {
+        sseConnectedRef.current = false;
+        setSseConnected(false);
+      },
+      () => {
+        sseConnectedRef.current = true;
+        setSseConnected(true);
+      },
+    );
+    const interval = window.setInterval(() => {
+      if (!sseConnectedRef.current && !document.hidden) loadPrinters();
+    }, 5000);
+    return () => {
+      unsubscribe();
+      window.clearInterval(interval);
+    };
+  }, [applyFleet, loadPrinters]);
 
   useEffect(() => {
     const refreshShortcut = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === 'r' && !modal && !stopPrinter && !(event.target instanceof HTMLInputElement)) loadPrinters(true);
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key.toLowerCase() !== 'r' || modal || stopPrinter) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLCanvasElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      loadPrinters(true);
     };
     window.addEventListener('keydown', refreshShortcut);
     return () => window.removeEventListener('keydown', refreshShortcut);
@@ -66,8 +131,22 @@ function App() {
   }, [toast]);
 
   const printers = useMemo(() => fleet?.printers ?? [], [fleet]);
+
+  useEffect(() => {
+    for (const printer of printers) {
+      const last = printer.lastCommand;
+      if (last?.result === 'rejected') {
+        const prevSeq = notifiedRejectionsRef.current.get(printer.id);
+        if (prevSeq !== last.sequenceId) {
+          notifiedRejectionsRef.current.set(printer.id, last.sequenceId);
+          showToast(`${printer.name} 拒绝指令：${last.reason}`, 'error');
+        }
+      }
+    }
+  }, [printers, showToast]);
+
   const selected = printers.find((printer) => printer.id === selectedId) ?? printers[0];
-  const visible = printers.filter((printer) => filter === 'all' || printer.status === filter);
+  const visible = printers.filter((printer) => matchesFilter(printer, filter));
   const online = printers.filter((printer) => printer.connected).length;
   const printing = printers.filter((printer) => printer.status === 'printing').length;
   const trayCount = printers.reduce((sum, printer) => sum + (printer.connected ? printer.ams.filter(unit => unit.present !== false).flatMap(unit => unit.trays).filter(tray => tray.empty === false).length : 0), 0);
@@ -129,7 +208,18 @@ function App() {
           </section>
           <section className="fleet-section">
             <div className="section-heading"><div><h2>设备现场</h2><span>FLEET / {String(printers.length).padStart(2, '0')}</span></div><div className="filter-tabs" aria-label="设备状态筛选">
-              {([['all', '全部设备'], ['printing', '打印中'], ['idle', '待命']] as const).map(([key, label]) => <button key={key} className={filter === key ? 'active' : ''} onClick={() => setFilter(key)}>{label}<span>{key === 'all' ? printers.length : printers.filter(printer => printer.status === key).length}</span></button>)}
+              {FILTER_TABS.map(({ key, label }) => {
+                const count = printers.filter((printer) => matchesFilter(printer, key)).length;
+                return (
+                  <button
+                    key={key}
+                    className={(filter === key ? 'active ' : '') + (key === 'error' && count > 0 ? 'has-alert' : '')}
+                    onClick={() => setFilter(key)}
+                  >
+                    {label}<span>{count}</span>
+                  </button>
+                );
+              })}
             </div></div>
             {visible.length ? <div className="printer-grid">{visible.map(printer => <PrinterCard key={printer.id} printer={printer} index={printers.indexOf(printer) + 1} selected={selected?.id === printer.id} busy={busyIds.has(printer.id)} onSelect={() => setSelectedId(printer.id)} onCommand={(command, value) => handleCommand(printer.id, command, value)} onStop={() => setStopPrinter(printer)} />)}</div> : <div className="empty-filter"><CheckCircle2 size={25} /><strong>当前没有该状态的设备</strong><button onClick={() => setFilter('all')}>查看全部设备</button></div>}
           </section>
@@ -138,10 +228,20 @@ function App() {
             <aside className="activity-panel">
               <div className="activity-heading"><div><span className="mini-label">DEVICE INSIGHT</span><h2>运行摘要</h2></div><span className={'live-indicator ' + (selected.connected ? '' : 'offline')}><i />{selected.connected ? '已连接' : '离线'}</span></div>
               <div className="activity-device"><span className="small-printer-icon"><PrinterIcon size={19} /></span><div><strong>{selected.name}</strong><small>{selected.model}</small></div><Check size={14} /></div>
-              <div className="insight-line"><span>当前状态</span><strong>{selected.status === 'printing' ? '正在打印' : selected.status === 'paused' ? '已暂停' : selected.status === 'error' ? '需要检查' : selected.status === 'offline' ? '等待连接' : '待命中'}</strong></div>
+              {selected.currentJob && (
+                <div className="activity-progress">
+                  <ProgressRing value={selected.currentJob.progress} paused={selected.status === 'paused'} />
+                  <div className="activity-progress-meta">
+                    <strong title={selected.currentJob.name}>{selected.currentJob.name}</strong>
+                    <span>{selected.currentJob.layerCurrent} / {selected.currentJob.layerTotal} 层</span>
+                    <span>已用 {formatMinutes(selected.currentJob.elapsedMinutes)} · 剩余 {formatMinutes(selected.currentJob.remainingMinutes)}</span>
+                  </div>
+                </div>
+              )}
+              <div className="insight-line"><span>当前状态</span><strong>{selected.status === 'printing' ? (selected.preparing ? '准备打印' : '正在打印') : selected.status === 'paused' ? '已暂停' : selected.status === 'error' ? '需要检查' : selected.status === 'offline' ? '等待连接' : '待命中'}</strong></div>
               <div className="insight-line"><span>速度模式</span><strong>{selected.speed.label} · {selected.speed.percent}%</strong></div>
               <div className="insight-line"><span>腔体照明</span><strong>{selected.lightOn ? '开启' : '关闭'}<i className={'light-indicator ' + (selected.lightOn ? 'on' : '')} /></strong></div>
-              <div className="activity-footer"><ShieldCheck size={14} /><span>本地连接 · 状态每 5 秒同步</span></div>
+              <div className="activity-footer"><ShieldCheck size={14} /><span>{sseConnected ? '本地连接 · 实时事件推送' : '本地连接 · 状态每 5 秒同步'}</span></div>
             </aside>
           </section>}
           <footer className="page-footer"><span>竹控 STUDIO<span className="footer-divider">/</span>MADE FOR MAKERS.</span><span><i />LOCAL NETWORK ONLY<b>·</b>3D 机型示意</span></footer>
