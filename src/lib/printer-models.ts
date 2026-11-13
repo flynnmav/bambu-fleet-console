@@ -47,21 +47,21 @@ export function createPrinterModel(name: string): PrinterModel {
   group.name = label;
   const material = (color: THREE.ColorRepresentation, metalness = 0, roughness = 0.4) =>
     new THREE.MeshStandardMaterial({ color, metalness, roughness });
-  const charcoal = material('#252b30', 0.5, 0.34);
-  const black = material('#101619', 0.25, 0.45);
-  const rubber = material('#171c1e', 0, 0.85);
-  const silver = material('#bdc6ca', 0.78, 0.28);
+  const charcoal = material('#1b2028', 0.55, 0.32);
+  const black = material('#0d1117', 0.35, 0.4);
+  const rubber = material('#14181e', 0, 0.85);
+  const silver = material('#94a3b8', 0.8, 0.24);
   const white = material('#e1e4df', 0.3, 0.32);
   const steel = material('#909ea7', 0.85, 0.22);
   const brass = material('#c99143', 0.75, 0.25);
-  const bedMaterial = material('#555953', 0.48, 0.68);
-  const partMaterial = material('#69ba4c', 0.05, 0.34);
-  const ledMaterial = new THREE.MeshStandardMaterial({ color: '#dcf9e5', emissive: '#c1ffd9', emissiveIntensity: 1.4, roughness: 0.3 });
-  const statusMaterial = new THREE.MeshStandardMaterial({ color: '#5fc994', emissive: '#5fc994', emissiveIntensity: 0.65 });
+  const bedMaterial = material('#3c434d', 0.52, 0.6);
+  const partMaterial = material('#10b981', 0.22, 0.24);
+  const ledMaterial = new THREE.MeshStandardMaterial({ color: '#d1fae5', emissive: '#6ee7b7', emissiveIntensity: 1.4, roughness: 0.3 });
+  const statusMaterial = new THREE.MeshStandardMaterial({ color: '#00d66b', emissive: '#00d66b', emissiveIntensity: 0.85 });
   // Low-opacity physical glazing leaves the mechanics readable at card sizes.
   const glass = new THREE.MeshPhysicalMaterial({
-    color: '#98bcc2', metalness: 0.05, roughness: 0.1, transmission: 0.18,
-    thickness: 0.025, transparent: true, opacity: 0.19, depthWrite: false,
+    color: '#64748b', metalness: 0.05, roughness: 0.1, transmission: 0.18,
+    thickness: 0.025, transparent: true, opacity: 0.22, depthWrite: false,
     side: THREE.DoubleSide, clearcoat: 1, envMapIntensity: 0.65,
   });
   const mesh = (geometry: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D = group) => {
@@ -138,7 +138,7 @@ export function createPrinterModel(name: string): PrinterModel {
     // Single nozzle: https://blog.bambulab.com/h2s-the-ultimate-single-nozzle-3d-printer-now-bigger-than-ever/
     // Dimensions / 5-inch touchscreen: https://bambulab.cn/zh-cn/h2s/tech-specs
     // Hinged screen above the glass door: https://wiki.bambulab.com/en/h2s/maintenance/replace-front-cover
-    const shell = material('#b0b2af', 0.18, 0.48);
+    const shell = material('#6e7781', 0.48, 0.32);
     feet(2.36, 2.46);
     box(2.7, 0.26, 2.82, 0, 0.24, 0, shell);
     box(2.5, 0.1, 2.6, 0, 0.42, 0, black);
@@ -400,11 +400,11 @@ export function createPrinterModel(name: string): PrinterModel {
   return {
     group, kind, label,
     update(status, progress, lightOn, seconds, animate) {
-      const color = status === 'error' ? '#e97461' : status === 'paused' ? '#e6ae5b' : status === 'offline' ? '#718087' : '#67cf9b';
+      const color = status === 'error' ? '#ef4444' : status === 'paused' ? '#f59e0b' : status === 'offline' ? '#64748b' : '#00d66b';
       if (color !== previousColor) {
         statusMaterial.color.set(color);
         statusMaterial.emissive.set(color);
-        partMaterial.color.set(status === 'paused' || status === 'error' ? '#df9650' : '#70bd4c');
+        partMaterial.color.set(status === 'paused' ? '#f59e0b' : status === 'error' ? '#ef4444' : '#10b981');
         previousColor = color;
       }
       const hasProgress = typeof progress === 'number' && Number.isFinite(progress);

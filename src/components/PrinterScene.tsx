@@ -196,6 +196,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       room?.dispose();
       scene.traverse((object) => {
         if (object instanceof THREE.DirectionalLight || object instanceof THREE.SpotLight || object instanceof THREE.PointLight) object.shadow.dispose();
+        if (object instanceof THREE.GridHelper) object.dispose();
       });
       disposeModel(scene);
       if (renderer) {
@@ -251,7 +252,25 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       const fill = new THREE.DirectionalLight('#d6e8fa', 2.2);
       fill.position.set(4, 3, -3);
       scene.add(fill);
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.15 }));
+      const rim = new THREE.DirectionalLight('#38bdf8', 1.6);
+      rim.position.set(-4, 4, -4);
+      scene.add(rim);
+      const grid = new THREE.GridHelper(5.4, 24, 0x00d66b, 0x1e293b);
+      grid.position.y = 0.001;
+      const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+      for (const mat of gridMaterials) {
+        mat.opacity = 0.22;
+        mat.transparent = true;
+      }
+      scene.add(grid);
+      const stageRing = new THREE.Mesh(
+        new THREE.RingGeometry(1.85, 1.88, 64),
+        new THREE.MeshBasicMaterial({ color: '#00d66b', transparent: true, opacity: 0.28, side: THREE.DoubleSide }),
+      );
+      stageRing.rotation.x = -Math.PI / 2;
+      stageRing.position.y = 0.002;
+      scene.add(stageRing);
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.22 }));
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -0.005;
       ground.receiveShadow = true;
@@ -334,7 +353,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
     ? ` · ${Math.round(THREE.MathUtils.clamp(progress, 0, 100))}%` : '';
 
   return (
-    <div className={`scene-shell ${failure ? 'scene-unavailable' : ''}`} data-model={info.kind} style={{ position: 'relative', width: '100%', height: 320, minWidth: 0, overflow: 'hidden', isolation: 'isolate' }}>
+    <div className={`scene-shell ${failure ? 'scene-unavailable' : ''}`} data-model={info.kind} style={{ position: 'relative', width: '100%', height: 235, minWidth: 0, overflow: 'hidden', isolation: 'isolate' }}>
       <div ref={mountRef} className="scene-viewport" style={{ position: 'absolute', inset: 0, visibility: failure ? 'hidden' : 'visible' }} />
       <div className="scene-caption" id={captionId} style={{ position: 'absolute', left: 14, top: 12, pointerEvents: 'none', zIndex: 2 }}>
         <span className="scene-disclaimer">机型示意 · 非摄像头</span>

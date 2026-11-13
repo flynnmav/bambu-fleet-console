@@ -86,9 +86,18 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
           <span className="idle-symbol">{printer.status === 'error' ? <TriangleAlert size={22} /> : <Check size={24} />}</span>
         </div>}
         <div className="temperature-row">
-          <div><span><Thermometer size={13} />喷嘴</span><strong>{Math.round(printer.temperatures.nozzle)}<small> / {Math.round(printer.temperatures.nozzleTarget)}°</small></strong></div>
-          <div><span><Gauge size={13} />热床</span><strong>{Math.round(printer.temperatures.bed)}<small> / {Math.round(printer.temperatures.bedTarget)}°</small></strong></div>
-          <div><span><PrinterIcon size={13} />腔体</span><strong>{printer.temperatures.chamber == null ? '—' : Math.round(printer.temperatures.chamber)}<small> °C</small></strong></div>
+          <div className={printer.temperatures.nozzleTarget > 0 ? 'is-heating' : ''}>
+            <div className="temp-head"><span><Thermometer size={13} />喷嘴</span><strong>{Math.round(printer.temperatures.nozzle)}<small> / {Math.round(printer.temperatures.nozzleTarget)}°</small></strong></div>
+            <div className="temp-bar"><i style={{ width: `${Math.min(100, Math.round((printer.temperatures.nozzle / 300) * 100))}%` }} /></div>
+          </div>
+          <div className={printer.temperatures.bedTarget > 0 ? 'is-heating' : ''}>
+            <div className="temp-head"><span><Gauge size={13} />热床</span><strong>{Math.round(printer.temperatures.bed)}<small> / {Math.round(printer.temperatures.bedTarget)}°</small></strong></div>
+            <div className="temp-bar"><i style={{ width: `${Math.min(100, Math.round((printer.temperatures.bed / 120) * 100))}%` }} /></div>
+          </div>
+          <div>
+            <div className="temp-head"><span><PrinterIcon size={13} />腔体</span><strong>{printer.temperatures.chamber == null ? '—' : Math.round(printer.temperatures.chamber)}<small> °C</small></strong></div>
+            <div className="temp-bar"><i style={{ width: `${printer.temperatures.chamber == null ? 0 : Math.min(100, Math.round((printer.temperatures.chamber / 70) * 100))}%` }} /></div>
+          </div>
         </div>
       </div>
       {printer.lastCommand && ['rejected', 'unknown'].includes(printer.lastCommand.result) && <div className="command-warning" role="status"><TriangleAlert size={14} /><span>{printer.lastCommand.result === 'rejected' ? '设备拒绝指令' : '指令执行状态未知'}：{printer.lastCommand.reason}</span></div>}
