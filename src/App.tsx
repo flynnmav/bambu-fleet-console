@@ -10,6 +10,7 @@ import { PrinterCard } from './components/PrinterCard';
 import { PrinterDetails } from './components/PrinterDetails';
 import { Modal } from './components/Modal';
 import { ProgressRing } from './components/ProgressRing';
+import { BambuLogo } from './components/BambuLogo';
 
 type Filter = 'all' | 'printing' | 'paused' | 'idle' | 'error';
 type Toast = { id: number; message: string; kind: 'success' | 'error' };
@@ -170,13 +171,13 @@ function App() {
     }
   }
 
-  if (loading) return <div className="full-state"><div className="brand-loader"><Layers3 size={30} /></div><LoaderCircle className="spin" size={22} /><p>正在唤醒你的打印工作空间…</p></div>;
+  if (loading) return <div className="full-state"><div className="brand-loader"><BambuLogo size={26} /></div><LoaderCircle className="spin" size={22} /><p>正在唤醒你的打印工作空间…</p></div>;
   if (!fleet) return <div className="full-state"><div className="error-symbol"><TriangleAlert size={28} /></div><h1>暂时无法连接控制台</h1><p>{error}</p><button className="primary-button" onClick={() => { setLoading(true); loadPrinters(true); }}><RefreshCw size={16} />重新连接</button><small>请确认本地服务已经启动</small></div>;
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="#" aria-label="竹控工作台"><span className="brand-mark"><Layers3 size={25} strokeWidth={1.6} /></span><strong>竹控<span>STUDIO</span></strong></a>
+        <a className="brand" href="#" aria-label="竹控工作台"><span className="brand-mark"><BambuLogo size={21} /></span><strong>竹控<span>STUDIO</span></strong></a>
         <nav className="main-nav" aria-label="主导航">
           <button className="active" title="打印工作台"><LayoutDashboard size={21} /><span>工作台</span></button>
           <button onClick={() => setModal('settings')} title="设备管理"><PrinterIcon size={21} /><span>设备</span></button>
@@ -189,7 +190,7 @@ function App() {
       </aside>
       <main className="main-panel">
         <header className="topbar">
-          <div className="breadcrumb"><span className="studio-symbol">✳</span><strong>我的打印工作室</strong><span className="breadcrumb-slash">/</span><span>工作台</span></div>
+          <div className="breadcrumb"><span className="studio-symbol"><BambuLogo size={16} /></span><strong>我的打印工作室</strong><span className="breadcrumb-slash">/</span><span>工作台</span></div>
           <div className="top-actions">
             <span className={'mode-badge ' + fleet.mode}><i />{fleet.mode === 'demo' ? '演示空间' : '局域网已接入'}</span>
             <button className="top-icon" onClick={() => setModal('help')} aria-label="打开帮助"><CircleHelp size={18} /></button>

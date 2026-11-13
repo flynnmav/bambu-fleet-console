@@ -235,9 +235,9 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       room = null;
       pmrem.dispose();
       pmrem = null;
-      scene.environmentIntensity = 0.65;
-      scene.add(new THREE.HemisphereLight('#e8f2f0', '#a1aaa6', 2.4));
-      const key = new THREE.DirectionalLight('#fff4e5', 4.7);
+      scene.environmentIntensity = 0.6;
+      scene.add(new THREE.HemisphereLight('#ffffff', '#cbd5e1', 2.2));
+      const key = new THREE.DirectionalLight('#fffaf0', 3.8);
       key.position.set(-3, 6.5, 5);
       key.castShadow = true;
       key.shadow.mapSize.set(1024, 1024);
@@ -249,28 +249,28 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       key.shadow.bias = -0.0002;
       key.shadow.radius = 4;
       scene.add(key);
-      const fill = new THREE.DirectionalLight('#d6e8fa', 2.2);
+      const fill = new THREE.DirectionalLight('#e0f2fe', 1.8);
       fill.position.set(4, 3, -3);
       scene.add(fill);
-      const rim = new THREE.DirectionalLight('#38bdf8', 1.6);
+      const rim = new THREE.DirectionalLight('#bae6fd', 1.1);
       rim.position.set(-4, 4, -4);
       scene.add(rim);
-      const grid = new THREE.GridHelper(5.4, 24, 0x00d66b, 0x1e293b);
+      const grid = new THREE.GridHelper(5.4, 24, 0x00ae42, 0xcbd5e1);
       grid.position.y = 0.001;
       const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
       for (const mat of gridMaterials) {
-        mat.opacity = 0.22;
+        mat.opacity = 0.48;
         mat.transparent = true;
       }
       scene.add(grid);
       const stageRing = new THREE.Mesh(
         new THREE.RingGeometry(1.85, 1.88, 64),
-        new THREE.MeshBasicMaterial({ color: '#00d66b', transparent: true, opacity: 0.28, side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ color: '#00ae42', transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
       );
       stageRing.rotation.x = -Math.PI / 2;
       stageRing.position.y = 0.002;
       scene.add(stageRing);
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.22 }));
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.12 }));
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -0.005;
       ground.receiveShadow = true;

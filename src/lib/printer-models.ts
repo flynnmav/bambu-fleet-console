@@ -56,8 +56,8 @@ export function createPrinterModel(name: string): PrinterModel {
   const brass = material('#c99143', 0.75, 0.25);
   const bedMaterial = material('#3c434d', 0.52, 0.6);
   const partMaterial = material('#10b981', 0.22, 0.24);
-  const ledMaterial = new THREE.MeshStandardMaterial({ color: '#d1fae5', emissive: '#6ee7b7', emissiveIntensity: 1.4, roughness: 0.3 });
-  const statusMaterial = new THREE.MeshStandardMaterial({ color: '#00d66b', emissive: '#00d66b', emissiveIntensity: 0.85 });
+  const ledMaterial = new THREE.MeshStandardMaterial({ color: '#d1fae5', emissive: '#6ee7b7', emissiveIntensity: 1.2, roughness: 0.3 });
+  const statusMaterial = new THREE.MeshStandardMaterial({ color: '#00ae42', emissive: '#00ae42', emissiveIntensity: 0.75 });
   // Low-opacity physical glazing leaves the mechanics readable at card sizes.
   const glass = new THREE.MeshPhysicalMaterial({
     color: '#64748b', metalness: 0.05, roughness: 0.1, transmission: 0.18,
@@ -138,7 +138,7 @@ export function createPrinterModel(name: string): PrinterModel {
     // Single nozzle: https://blog.bambulab.com/h2s-the-ultimate-single-nozzle-3d-printer-now-bigger-than-ever/
     // Dimensions / 5-inch touchscreen: https://bambulab.cn/zh-cn/h2s/tech-specs
     // Hinged screen above the glass door: https://wiki.bambulab.com/en/h2s/maintenance/replace-front-cover
-    const shell = material('#6e7781', 0.48, 0.32);
+    const shell = material('#a8aeb5', 0.38, 0.35);
     feet(2.36, 2.46);
     box(2.7, 0.26, 2.82, 0, 0.24, 0, shell);
     box(2.5, 0.1, 2.6, 0, 0.42, 0, black);
@@ -179,7 +179,7 @@ export function createPrinterModel(name: string): PrinterModel {
     text('340 × 320 × 340', 0.6, 0.1, 0, -0.035, 0.067, '#9edbb7', '#252b30', screen);
     box(0.49, 0.018, 0.012, 0, -0.135, 0.068, statusMaterial, screen);
     text('H2S', 0.36, 0.2, -0.95, 3.22, 1.418, '#e4e6e2', '#252b30');
-    text('B A M B U  L A B', 0.91, 0.11, 0, 0.25, 1.419, '#555e5c', '#b0b2af');
+    text('B A M B U  L A B', 0.91, 0.11, 0, 0.25, 1.419, '#475569', '#a8aeb5');
     box(2.39, 0.035, 0.035, 0, 0.4, 1.42, silver);
     // Single-head CoreXY mechanics, a rear air duct, and chamber illumination.
     for (const x of [-1.02, 1.02]) {
@@ -400,11 +400,11 @@ export function createPrinterModel(name: string): PrinterModel {
   return {
     group, kind, label,
     update(status, progress, lightOn, seconds, animate) {
-      const color = status === 'error' ? '#ef4444' : status === 'paused' ? '#f59e0b' : status === 'offline' ? '#64748b' : '#00d66b';
+      const color = status === 'error' ? '#ef4444' : status === 'paused' ? '#f59e0b' : status === 'offline' ? '#64748b' : '#00ae42';
       if (color !== previousColor) {
         statusMaterial.color.set(color);
         statusMaterial.emissive.set(color);
-        partMaterial.color.set(status === 'paused' ? '#f59e0b' : status === 'error' ? '#ef4444' : '#10b981');
+        partMaterial.color.set(status === 'paused' ? '#f59e0b' : status === 'error' ? '#ef4444' : '#00ae42');
         previousColor = color;
       }
       const hasProgress = typeof progress === 'number' && Number.isFinite(progress);

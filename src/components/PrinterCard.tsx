@@ -4,6 +4,7 @@ import {
   LoaderCircle, Pause, Play, Printer as PrinterIcon, Square, Thermometer, TriangleAlert,
 } from 'lucide-react';
 import { SPEED_OPTIONS, type Printer, type PrinterCommand } from '../types';
+import { BambuLogo } from './BambuLogo';
 
 const PrinterScene = lazy(() => import('./PrinterScene'));
 const STATUS = {
@@ -63,7 +64,7 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
     <article className={'printer-card ' + (selected ? 'selected ' : '') + status.className} data-printer-id={printer.id}>
       <div className="printer-card-header">
         <button className="device-select" onClick={onSelect} aria-label={'查看 ' + printer.name + ' 详情'}>
-          <span className="device-kicker"><b>{String(index).padStart(2, '0')}</b><i />BAMBU LAB</span>
+          <span className="device-kicker"><b>{String(index).padStart(2, '0')}</b><i /><BambuLogo size={11} className="kicker-logo" />BAMBU LAB</span>
           <h3>{printer.model}<ArrowUpRight size={17} /></h3>
           <span className="device-location">{printer.name}</span>
         </button>
