@@ -1,9 +1,10 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight, Check, ChevronDown, Clock3, FileBox, Gauge, Layers3, Lightbulb,
   LoaderCircle, Pause, Play, Printer as PrinterIcon, Square, Thermometer, TriangleAlert,
 } from 'lucide-react';
-import type { Printer, PrinterCommand } from '../types';
+import { SPEED_OPTIONS, type Printer, type PrinterCommand } from '../types';
+import { BambuLogo } from './BambuLogo';
 
 const PrinterScene = lazy(() => import('./PrinterScene'));
 const STATUS = {
@@ -13,12 +14,6 @@ const STATUS = {
   offline: { label: '离线', english: 'OFFLINE', className: 'offline' },
   error: { label: '需要处理', english: 'ATTENTION', className: 'error' },
 };
-const SPEEDS = [
-  { level: 1, label: '静音', percent: 50 },
-  { level: 2, label: '标准', percent: 100 },
-  { level: 3, label: '运动', percent: 124 },
-  { level: 4, label: '狂暴', percent: 166 },
-];
 interface Props {
   printer: Printer;
   index: number;
@@ -35,20 +30,45 @@ function formatDuration(minutes: number) {
 }
 export function PrinterCard({ printer, index, selected, busy, onSelect, onCommand, onStop }: Props) {
   const [speedOpen, setSpeedOpen] = useState(false);
+  const speedRef = useRef<HTMLDivElement>(null);
   const status = STATUS[printer.status];
+  const statusLabel = printer.status === 'printing' && printer.preparing ? '准备中' : status.label;
   const active = printer.status === 'printing' || printer.status === 'paused';
   const job = printer.currentJob;
   const progress = Math.min(100, Math.max(0, job?.progress ?? 0));
   const modelWord = printer.model.toUpperCase().replace('CARBON', '').trim();
+
+  useEffect(() => {
+    if (busy || !printer.connected) setSpeedOpen(false);
+  }, [busy, printer.connected]);
+
+  useEffect(() => {
+    if (!speedOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (speedRef.current && !speedRef.current.contains(event.target as Node)) {
+        setSpeedOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSpeedOpen(false);
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [speedOpen]);
+
   return (
     <article className={'printer-card ' + (selected ? 'selected ' : '') + status.className} data-printer-id={printer.id}>
       <div className="printer-card-header">
         <button className="device-select" onClick={onSelect} aria-label={'查看 ' + printer.name + ' 详情'}>
-          <span className="device-kicker"><b>{String(index).padStart(2, '0')}</b><i />BAMBU LAB</span>
+          <span className="device-kicker"><b>{String(index).padStart(2, '0')}</b><i /><BambuLogo size={11} className="kicker-logo" />BAMBU LAB</span>
           <h3>{printer.model}<ArrowUpRight size={17} /></h3>
           <span className="device-location">{printer.name}</span>
         </button>
-        <span className={'status-badge ' + status.className}><i /><span>{status.label}<small>{status.english}</small></span></span>
+        <span className={'status-badge ' + status.className}><i /><span>{statusLabel}<small>{printer.preparing ? 'PREPARING' : status.english}</small></span></span>
       </div>
       <div className="printer-visual">
         <span className="model-watermark" aria-hidden="true">{modelWord}</span>
@@ -63,13 +83,22 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
           <div className="job-progress-track"><i style={{ width: progress + '%' }} /></div>
           <div className="job-meta"><span><Layers3 size={12} />{job.layerCurrent} / {job.layerTotal} 层</span><span><Clock3 size={12} />剩余 {formatDuration(job.remainingMinutes)}</span></div>
         </div> : <div className={'idle-overview ' + (printer.status === 'error' ? 'has-error' : '')}>
-          <div className="idle-copy"><span className="mini-label">{status.english} / 设备状态</span><strong>{printer.status === 'error' ? '任务异常，请检查设备' : !printer.connected ? '等待设备重新连接' : printer.status === 'idle' ? '一切就绪，等待下一个灵感。' : '等待打印机状态回报'}</strong><p>{printer.status === 'error' ? '错误码 ' + (printer.errorCode ?? '未知') : printer.lastJob ? '上一任务 · ' + printer.lastJob : '连接后将显示任务信息'}</p></div>
+          <div className="idle-copy"><span className="mini-label">{status.english} / 设备状态</span><strong>{printer.status === 'error' ? '任务异常，请检查设备' : !printer.connected ? '等待设备重新连接' : printer.status === 'idle' ? '一切就绪，等待下一个灵感。' : printer.preparing ? '正在热床调平与准备中…' : '等待打印机状态回报'}</strong><p>{printer.status === 'error' ? '错误码 ' + (printer.errorCode ?? '未知') : printer.lastJob ? '上一任务 · ' + printer.lastJob : '连接后将显示任务信息'}</p></div>
           <span className="idle-symbol">{printer.status === 'error' ? <TriangleAlert size={22} /> : <Check size={24} />}</span>
         </div>}
         <div className="temperature-row">
-          <div><span><Thermometer size={13} />喷嘴</span><strong>{Math.round(printer.temperatures.nozzle)}<small> / {Math.round(printer.temperatures.nozzleTarget)}°</small></strong></div>
-          <div><span><Gauge size={13} />热床</span><strong>{Math.round(printer.temperatures.bed)}<small> / {Math.round(printer.temperatures.bedTarget)}°</small></strong></div>
-          <div><span><PrinterIcon size={13} />腔体</span><strong>{printer.temperatures.chamber == null ? '—' : Math.round(printer.temperatures.chamber)}<small> °C</small></strong></div>
+          <div className={printer.temperatures.nozzleTarget > 0 ? 'is-heating' : ''}>
+            <div className="temp-head"><span><Thermometer size={13} />喷嘴</span><strong>{Math.round(printer.temperatures.nozzle)}<small> / {Math.round(printer.temperatures.nozzleTarget)}°</small></strong></div>
+            <div className="temp-bar"><i style={{ width: `${Math.min(100, Math.round((printer.temperatures.nozzle / 300) * 100))}%` }} /></div>
+          </div>
+          <div className={printer.temperatures.bedTarget > 0 ? 'is-heating' : ''}>
+            <div className="temp-head"><span><Gauge size={13} />热床</span><strong>{Math.round(printer.temperatures.bed)}<small> / {Math.round(printer.temperatures.bedTarget)}°</small></strong></div>
+            <div className="temp-bar"><i style={{ width: `${Math.min(100, Math.round((printer.temperatures.bed / 120) * 100))}%` }} /></div>
+          </div>
+          <div>
+            <div className="temp-head"><span><PrinterIcon size={13} />腔体</span><strong>{printer.temperatures.chamber == null ? '—' : Math.round(printer.temperatures.chamber)}<small> °C</small></strong></div>
+            <div className="temp-bar"><i style={{ width: `${printer.temperatures.chamber == null ? 0 : Math.min(100, Math.round((printer.temperatures.chamber / 70) * 100))}%` }} /></div>
+          </div>
         </div>
       </div>
       {printer.lastCommand && ['rejected', 'unknown'].includes(printer.lastCommand.result) && <div className="command-warning" role="status"><TriangleAlert size={14} /><span>{printer.lastCommand.result === 'rejected' ? '设备拒绝指令' : '指令执行状态未知'}：{printer.lastCommand.reason}</span></div>}
@@ -78,9 +107,9 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
         {printer.status === 'paused' && <button className="control-main" disabled={busy || !printer.connected} onClick={() => onCommand('resume')}><Play size={14} fill="currentColor" />继续打印</button>}
         {!active && <button className="control-main secondary" onClick={onSelect}><ArrowUpRight size={16} />设备详情</button>}
         <button className={'control-icon ' + (printer.lightOn ? 'is-on' : '')} disabled={busy || !printer.connected} onClick={() => onCommand('light', !printer.lightOn)} title={printer.lightOn ? '关闭腔灯' : '打开腔灯'} aria-label={printer.lightOn ? '关闭腔灯' : '打开腔灯'}><Lightbulb size={17} /></button>
-        <div className="speed-control">
+        <div className="speed-control" ref={speedRef}>
           <button className="speed-button" disabled={busy || !printer.connected} onClick={() => setSpeedOpen(!speedOpen)} aria-expanded={speedOpen}><Gauge size={15} /><span>{printer.speed.percent}%<small>{printer.speed.label}</small></span><ChevronDown size={13} /></button>
-          {speedOpen && <div className="speed-menu"><span className="menu-title">打印速度</span>{SPEEDS.map(speed => <button key={speed.level} className={printer.speedLevel === speed.level ? 'active' : ''} disabled={busy || !printer.connected} onClick={async () => { if (await onCommand('speed', speed.level)) setSpeedOpen(false); }}><span>{speed.label}<small>{speed.percent}%</small></span>{printer.speedLevel === speed.level && <Check size={15} />}</button>)}</div>}
+          {speedOpen && <div className="speed-menu"><span className="menu-title">打印速度</span>{SPEED_OPTIONS.map(speed => <button key={speed.level} className={printer.speedLevel === speed.level ? 'active' : ''} disabled={busy || !printer.connected} onClick={async () => { if (await onCommand('speed', speed.level)) setSpeedOpen(false); }}><span>{speed.label}<small>{speed.percent}%</small></span>{printer.speedLevel === speed.level && <Check size={15} />}</button>)}</div>}
         </div>
         {active && <button className="control-icon stop-button" disabled={busy || !printer.connected} onClick={onStop} title="停止打印" aria-label={'停止 ' + printer.name + ' 当前打印'}><Square size={13} fill="currentColor" /></button>}
       </div>

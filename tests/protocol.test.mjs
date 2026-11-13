@@ -81,8 +81,24 @@ test('更换任务不复用上个任务进度，回到空闲清除任务', () =>
   assert.equal(idle.lastJob, 'B');
 });
 
-test('保留打印失败错误码供界面展示', () => {
-  const state = normalizeReport(emptyPrinter(config), { print: { gcode_state: 'FAILED', print_error: 123 } });
-  assert.equal(state.status, 'error');
-  assert.equal(state.errorCode, 123);
+test('保留打印失败错误码并在归零时清除', () => {
+  const failed = normalizeReport(emptyPrinter(config), { print: { gcode_state: 'FAILED', print_error: 123 } });
+  assert.equal(failed.status, 'error');
+  assert.equal(failed.errorCode, 123);
+  const cleared = normalizeReport(failed, { print: { gcode_state: 'IDLE', print_error: 0 } });
+  assert.equal(cleared.status, 'idle');
+  assert.equal(cleared.errorCode, null);
+});
+
+test('PREPARE 与 SLICING 状态映射为打印准备中，并记录耗时', () => {
+  const preparing = normalizeReport(emptyPrinter(config), {
+    print: { gcode_state: 'PREPARE', subtask_name: '校准测试', mc_elapsed_time: 2 },
+  });
+  assert.equal(preparing.status, 'printing');
+  assert.equal(preparing.preparing, true);
+  assert.equal(preparing.currentJob.elapsedMinutes, 2);
+  const running = normalizeReport(preparing, { print: { gcode_state: 'RUNNING', mc_percent: 5 } });
+  assert.equal(running.status, 'printing');
+  assert.equal(running.preparing, false);
+  assert.equal(running.currentJob.elapsedMinutes, 2);
 });

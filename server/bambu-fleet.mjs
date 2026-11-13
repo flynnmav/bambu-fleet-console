@@ -2,11 +2,13 @@ import mqtt from 'mqtt';
 import { createCommand, emptyPrinter, normalizeReport } from './protocol.mjs';
 
 class BambuConnection {
-  constructor(config, { connect = mqtt.connect, commandTimeoutMs = 8000 } = {}) {
+  constructor(config, { connect = mqtt.connect, commandTimeoutMs = 8000, onUpdate } = {}) {
     this.commandTimeoutMs = commandTimeoutMs;
+    this.onUpdate = onUpdate;
     this.config = config;
     this.state = emptyPrinter(config);
     this.sequenceId = 0;
+    this.pendingCommands = new Map();
     this.client = connect(`mqtts://${config.ip}:8883`, {
       username: 'bblp',
       password: config.accessCode,
@@ -20,15 +22,17 @@ class BambuConnection {
     });
     if (!config.caCertificate) console.warn(`[${config.name}] 未配置 BBL CA，当前仅加密传输但未完整校验设备证书`);
     this.client.on('connect', () => {
-      this.state.connected = true;
       this.client.subscribe(`device/${config.serial}/report`, { qos: 1 }, (error, granted) => {
         if (error || granted?.some((item) => item.qos === 128)) {
           console.warn(`[${config.name}] 状态主题订阅失败`);
           this.state.connected = false;
           this.state.status = 'offline';
+          this.notify();
           return;
         }
+        this.state.connected = true;
         this.requestStatus();
+        this.notify();
       });
     });
     this.client.on('message', (topic, payload) => {
@@ -38,17 +42,35 @@ class BambuConnection {
         const previousPresence = this.state.amsState?.existBits;
         this.state = normalizeReport(this.state, report, { amsModels: config.amsModels });
         const presence = this.state.amsState?.existBits;
-        if (previousPresence != null && presence != null && presence !== '0' && presence !== previousPresence) this.requestVersions();
-        const pending = this.state.lastCommand;
-        const response = [report?.print, report?.system].find((item) => item?.result != null && pending && String(item.sequence_id) === pending.sequenceId && item.command === pending.command);
+        if (previousPresence != null && presence != null && presence !== previousPresence) {
+          try {
+            const prevBits = BigInt('0x' + (previousPresence || '0'));
+            const nextBits = BigInt('0x' + (presence || '0'));
+            if ((nextBits & ~prevBits) !== 0n) this.requestVersions();
+          } catch {
+            if (presence !== '0') this.requestVersions();
+          }
+        }
+        const response = [report?.print, report?.system].find((item) => {
+          if (item?.result == null || item?.sequence_id == null) return false;
+          const tracked = this.pendingCommands.get(String(item.sequence_id));
+          return Boolean(tracked && (!item.command || item.command === tracked.command));
+        });
         if (response) {
-          this.state.lastCommand = {
-            ...pending,
+          const seqId = String(response.sequence_id);
+          const tracked = this.pendingCommands.get(seqId);
+          const updated = {
+            ...tracked,
             result: String(response.result).toLowerCase() === 'success' ? 'acknowledged' : 'rejected',
             reason: response.reason == null ? String(response.result) : String(response.reason),
           };
+          this.pendingCommands.set(seqId, updated);
+          if (updated.result === 'rejected' || this.state.lastCommand?.sequenceId === seqId) {
+            this.state.lastCommand = updated;
+          }
         }
         this.state.connected = true;
+        this.notify();
       } catch {
         console.warn(`[${config.name}] 收到无法解析的状态报文`);
       }
@@ -56,10 +78,23 @@ class BambuConnection {
     this.client.on('close', () => {
       this.state.connected = false;
       this.state.status = 'offline';
+      this.notify();
     });
     this.client.on('error', (error) => {
       console.warn(`[${config.name}] MQTT 连接异常：${error.message}`);
     });
+  }
+
+  notify() {
+    this.onUpdate?.(this.state);
+  }
+
+  recordCommand(sequenceId, entry) {
+    this.pendingCommands.set(sequenceId, entry);
+    if (this.pendingCommands.size > 32) {
+      const oldestKey = this.pendingCommands.keys().next().value;
+      if (oldestKey !== undefined) this.pendingCommands.delete(oldestKey);
+    }
   }
 
   requestStatus() {
@@ -88,7 +123,9 @@ class BambuConnection {
     const payload = createCommand(command, value, ++this.sequenceId);
     const envelope = payload.print || payload.system;
     const sequenceId = envelope.sequence_id;
-    this.state.lastCommand = { sequenceId, command: envelope.command, result: 'sending', reason: '正在投递' };
+    const initialEntry = { sequenceId, command: envelope.command, result: 'sending', reason: '正在投递' };
+    this.recordCommand(sequenceId, initialEntry);
+    this.state.lastCommand = initialEntry;
     try {
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -106,25 +143,46 @@ class BambuConnection {
           },
         );
       });
-      if (this.state.lastCommand?.sequenceId === sequenceId && this.state.lastCommand.result === 'sending') {
-        this.state.lastCommand = { ...this.state.lastCommand, result: 'sent', reason: '已投递，等待设备状态或响应' };
+      const current = this.pendingCommands.get(sequenceId);
+      if (current?.result === 'sending') {
+        const sentEntry = { ...current, result: 'sent', reason: '已投递，等待设备状态或响应' };
+        this.recordCommand(sequenceId, sentEntry);
+        if (this.state.lastCommand?.sequenceId === sequenceId && this.state.lastCommand.result === 'sending') {
+          this.state.lastCommand = sentEntry;
+        }
       }
+      this.notify();
     } catch (error) {
-      if (this.state.lastCommand?.sequenceId === sequenceId && this.state.lastCommand.result === 'sending') {
-        this.state.lastCommand = { ...this.state.lastCommand, result: 'unknown', reason: error.message };
+      const current = this.pendingCommands.get(sequenceId);
+      if (current?.result === 'sending') {
+        const unknownEntry = { ...current, result: 'unknown', reason: error.message };
+        this.recordCommand(sequenceId, unknownEntry);
+        if (this.state.lastCommand?.sequenceId === sequenceId && this.state.lastCommand.result === 'sending') {
+          this.state.lastCommand = unknownEntry;
+        }
       }
+      this.notify();
       throw error;
     }
     return this.state;
   }
 
   async close() {
-    await this.client.endAsync();
+    let timer;
+    await Promise.race([
+      Promise.resolve(this.client.endAsync(true)).catch(() => {}),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, 2000);
+        timer.unref?.();
+      }),
+    ]);
+    clearTimeout(timer);
   }
 }
 
 export class BambuFleet {
   constructor(configs, options = {}) {
+    this.listeners = new Set();
     const ids = new Set();
     const serials = new Set();
     const endpoints = new Set();
@@ -139,7 +197,26 @@ export class BambuFleet {
         if (!config[key]) throw new Error(`打印机 ${config.id} 缺少 ${key}`);
       }
     }
-    this.connections = configs.map((config) => new BambuConnection(config, options));
+    this.connections = configs.map((config) => new BambuConnection(config, {
+      ...options,
+      onUpdate: () => this.emit(),
+    }));
+  }
+
+  subscribe(listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  emit() {
+    const printers = this.getPrinters();
+    for (const listener of this.listeners) {
+      try {
+        listener(printers);
+      } catch {
+        // ignore listener errors
+      }
+    }
   }
 
   getPrinters() {

@@ -9,6 +9,9 @@ export const SPEED_PROFILES = {
 
 const STATUS_MAP = {
   RUNNING: 'printing',
+  PREPARE: 'printing',
+  SLICING: 'printing',
+  INIT: 'idle',
   PAUSE: 'paused',
   IDLE: 'idle',
   FINISH: 'idle',
@@ -34,6 +37,7 @@ export function emptyPrinter(config) {
     serial: config.serial,
     ip: config.ip,
     status: 'offline',
+    preparing: false,
     connected: false,
     currentJob: null,
     lastJob: null,
@@ -61,9 +65,15 @@ export function normalizeReport(previous, report, { amsModels = {} } = {}) {
   const print = report?.print && (report.print.result == null || report.print.command === 'push_status') ? report.print : null;
   if (print) {
     if (Object.keys(print).some((key) => !['command', 'sequence_id', 'result', 'reason', 'param'].includes(key))) next.lastUpdated = new Date().toISOString();
-    if (print.print_error != null) next.errorCode = numeric(print.print_error, previous.errorCode);
+    if (print.print_error != null) {
+      const code = numeric(print.print_error, previous.errorCode);
+      next.errorCode = code === 0 ? null : code;
+    }
     const status = STATUS_MAP[print.gcode_state];
     if (status) next.status = status;
+    if (print.gcode_state) {
+      next.preparing = ['PREPARE', 'SLICING'].includes(print.gcode_state);
+    }
     next.temperatures = {
       nozzle: numeric(print.nozzle_temper, previous.temperatures.nozzle),
       nozzleTarget: numeric(print.nozzle_target_temper, previous.temperatures.nozzleTarget),
@@ -90,15 +100,19 @@ export function normalizeReport(previous, report, { amsModels = {} } = {}) {
       next.amsState = ams.state;
     }
     const jobName = print.subtask_name || print.gcode_file;
-    if (jobName || ['mc_percent', 'layer_num', 'total_layer_num', 'mc_remaining_time'].some((key) => print[key] != null)) {
+    if (jobName || ['mc_percent', 'layer_num', 'total_layer_num', 'mc_remaining_time', 'mc_elapsed_time'].some((key) => print[key] != null)) {
       const oldJob = jobName && jobName !== previous.currentJob?.name ? {} : previous.currentJob || {};
+      const startedAt = oldJob.startedAt || new Date().toISOString();
+      const reportedElapsed = print.mc_elapsed_time != null ? numeric(print.mc_elapsed_time, null) : null;
+      const computedElapsed = Math.max(oldJob.elapsedMinutes || 0, Math.floor((Date.now() - Date.parse(startedAt)) / 60000));
       next.currentJob = {
         name: jobName || oldJob.name || '当前打印任务',
         progress: numeric(print.mc_percent, oldJob.progress || 0),
         layerCurrent: numeric(print.layer_num, oldJob.layerCurrent || 0),
         layerTotal: numeric(print.total_layer_num, oldJob.layerTotal || 0),
         remainingMinutes: numeric(print.mc_remaining_time, oldJob.remainingMinutes || 0),
-        elapsedMinutes: oldJob.elapsedMinutes || 0,
+        elapsedMinutes: reportedElapsed ?? computedElapsed,
+        startedAt,
       };
     }
     if (['FINISH', 'IDLE'].includes(print.gcode_state)) {

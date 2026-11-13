@@ -31,6 +31,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
   const [autoRotate, setAutoRotate] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [restoreCount, setRestoreCount] = useState(0);
   const captionId = useId();
   const info = identifyPrinterModel(model);
   stateRef.current = { model, status, progress, lightOn, autoRotate };
@@ -164,6 +165,11 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       event.preventDefault();
       fail('WebGL 连接已中断，已切换为静态机型示意');
     };
+    const onContextRestored = () => {
+      contextLost = false;
+      setFailure(null);
+      setRestoreCount((count) => count + 1);
+    };
     const onControlStart = () => { interacting = true; requestRender(); };
     const onControlEnd = () => { interacting = false; settlingUntil = performance.now() + 650; requestRender(); };
     const onControlChange = () => requestRender();
@@ -190,14 +196,16 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       room?.dispose();
       scene.traverse((object) => {
         if (object instanceof THREE.DirectionalLight || object instanceof THREE.SpotLight || object instanceof THREE.PointLight) object.shadow.dispose();
+        if (object instanceof THREE.GridHelper) object.dispose();
       });
       disposeModel(scene);
       if (renderer) {
         const canvas = renderer.domElement;
         canvas.removeEventListener('webglcontextlost', onContextLost);
+        canvas.removeEventListener('webglcontextrestored', onContextRestored);
         renderer.renderLists.dispose();
         renderer.dispose();
-        renderer.forceContextLoss();
+        if (!contextLost) renderer.forceContextLoss();
         canvas.remove();
       }
     };
@@ -217,6 +225,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       canvas.setAttribute('aria-label', '打印机三维机型示意，可拖动旋转，方向键旋转，滚轮缩放');
       canvas.setAttribute('aria-describedby', captionId);
       canvas.addEventListener('webglcontextlost', onContextLost, false);
+      canvas.addEventListener('webglcontextrestored', onContextRestored, false);
       host.appendChild(canvas);
       pmrem = new THREE.PMREMGenerator(renderer);
       room = new RoomEnvironment();
@@ -226,9 +235,9 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       room = null;
       pmrem.dispose();
       pmrem = null;
-      scene.environmentIntensity = 0.65;
-      scene.add(new THREE.HemisphereLight('#e8f2f0', '#a1aaa6', 2.4));
-      const key = new THREE.DirectionalLight('#fff4e5', 4.7);
+      scene.environmentIntensity = 0.6;
+      scene.add(new THREE.HemisphereLight('#ffffff', '#cbd5e1', 2.2));
+      const key = new THREE.DirectionalLight('#fffaf0', 3.8);
       key.position.set(-3, 6.5, 5);
       key.castShadow = true;
       key.shadow.mapSize.set(1024, 1024);
@@ -240,10 +249,28 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       key.shadow.bias = -0.0002;
       key.shadow.radius = 4;
       scene.add(key);
-      const fill = new THREE.DirectionalLight('#d6e8fa', 2.2);
+      const fill = new THREE.DirectionalLight('#e0f2fe', 1.8);
       fill.position.set(4, 3, -3);
       scene.add(fill);
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.15 }));
+      const rim = new THREE.DirectionalLight('#bae6fd', 1.1);
+      rim.position.set(-4, 4, -4);
+      scene.add(rim);
+      const grid = new THREE.GridHelper(5.4, 24, 0x00ae42, 0xcbd5e1);
+      grid.position.y = 0.001;
+      const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+      for (const mat of gridMaterials) {
+        mat.opacity = 0.48;
+        mat.transparent = true;
+      }
+      scene.add(grid);
+      const stageRing = new THREE.Mesh(
+        new THREE.RingGeometry(1.85, 1.88, 64),
+        new THREE.MeshBasicMaterial({ color: '#00ae42', transparent: true, opacity: 0.35, side: THREE.DoubleSide }),
+      );
+      stageRing.rotation.x = -Math.PI / 2;
+      stageRing.position.y = 0.002;
+      scene.add(stageRing);
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.ShadowMaterial({ opacity: 0.12 }));
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = -0.005;
       ground.receiveShadow = true;
@@ -313,9 +340,9 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
       setFailure('当前设备无法启用 WebGL，显示静态机型示意');
     }
     return cleanup;
-    // Only mount/unmount owns the renderer. Props below update existing resources.
+    // Only mount/unmount (or context restore) owns the renderer. Props below update existing resources.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [restoreCount]);
 
   useEffect(() => {
     handleRef.current?.setModel(model);
@@ -326,7 +353,7 @@ export default function PrinterScene({ model, status, progress, lightOn }: Print
     ? ` · ${Math.round(THREE.MathUtils.clamp(progress, 0, 100))}%` : '';
 
   return (
-    <div className={`scene-shell ${failure ? 'scene-unavailable' : ''}`} data-model={info.kind} style={{ position: 'relative', width: '100%', height: 320, minWidth: 0, overflow: 'hidden', isolation: 'isolate' }}>
+    <div className={`scene-shell ${failure ? 'scene-unavailable' : ''}`} data-model={info.kind} style={{ position: 'relative', width: '100%', height: 235, minWidth: 0, overflow: 'hidden', isolation: 'isolate' }}>
       <div ref={mountRef} className="scene-viewport" style={{ position: 'absolute', inset: 0, visibility: failure ? 'hidden' : 'visible' }} />
       <div className="scene-caption" id={captionId} style={{ position: 'absolute', left: 14, top: 12, pointerEvents: 'none', zIndex: 2 }}>
         <span className="scene-disclaimer">机型示意 · 非摄像头</span>

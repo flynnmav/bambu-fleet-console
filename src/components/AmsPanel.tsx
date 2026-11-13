@@ -37,7 +37,13 @@ function Unit({ unit, printerOnline }: { unit: AmsUnit; printerOnline: boolean }
       <div className="ams-tray-heading"><span><Box size={13} />{loaded} 个已确认装载</span><small>{unit.trays.length} 个已上报槽位</small></div>
       {unit.trays.length ? <div className="tray-grid">
         {unit.trays.map(tray => <div className={'tray-card ' + (tray.empty === true ? 'empty ' : '') + (tray.active ? 'tray-active' : '')} key={tray.id}>
-          <div className="tray-top"><span className="spool" style={{ '--spool-color': tray.color } as CSSProperties}><i /></span><span className="tray-slot">槽位 {slotName(tray.id)}</span></div>
+          <div className="tray-top">
+            <div className="tray-swatch">
+              <span className="spool" style={{ '--spool-color': tray.color } as CSSProperties}><i /></span>
+              <div className="tray-gauge" aria-hidden="true"><i style={{ height: `${tray.empty === true ? 0 : Math.min(100, Math.max(0, tray.remaining ?? 0))}%`, backgroundColor: tray.color }} /></div>
+            </div>
+            <span className="tray-slot">槽位 {slotName(tray.id)}</span>
+          </div>
           <strong title={tray.name || tray.material}>{tray.empty === true ? '空料盘' : tray.name || tray.material}</strong>
           <div className="tray-status">{tray.empty === true ? '未装载' : tray.reading ? <><ScanLine size={11} />RFID 读取中</> : tray.active ? <><ArrowDownToLine size={11} />正在进料</> : tray.empty === false ? tray.material : '装载状态未知'}</div>
           <div className="tray-bottom"><span><i style={{ backgroundColor: tray.color }} />剩余</span><b>{tray.remaining == null ? '—' : tray.remaining + '%'}</b></div>
