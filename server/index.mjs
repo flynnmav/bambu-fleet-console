@@ -51,8 +51,8 @@ app.get('/api/printers', (_req, res) => {
 
 app.post('/api/printers/:id/commands', async (req, res, next) => {
   try {
-    const { command, value } = req.body || {};
-    const printer = await fleet.command(req.params.id, command, value);
+    const { command, value, expectedJobId } = req.body || {};
+    const printer = await fleet.command(req.params.id, command, value, expectedJobId);
     res.status(202).json({
       accepted: true,
       message: demoMode ? '演示状态已更新' : '指令已发送至本机 MQTT，等待打印机状态回报',

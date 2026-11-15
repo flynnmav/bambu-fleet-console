@@ -2,6 +2,7 @@ export type PrinterStatus = 'printing' | 'idle' | 'paused' | 'offline' | 'error'
 export type PrinterCommand = 'pause' | 'resume' | 'stop' | 'light' | 'speed';
 
 export interface PrintJob {
+  id: string | null;
   name: string;
   progress: number;
   layerCurrent: number;
@@ -66,6 +67,7 @@ export interface Printer {
   serial: string;
   ip: string;
   status: PrinterStatus;
+  gcodeState?: string | null;
   connected: boolean;
   currentJob: PrintJob | null;
   lastJob: string | null;

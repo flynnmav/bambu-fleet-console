@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { emptyAmsState, invalidateAmsState, mergeAmsVersions, normalizeAmsReport } from './ams.mjs';
 
 export const SPEED_PROFILES = {
@@ -21,9 +22,68 @@ function numeric(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function fanPercent(value) {
-  const speed = numeric(value);
-  return Math.round(speed > 100 ? (speed / 255) * 100 : speed);
+function legacyFanPercent(value, fallback) {
+  if (!['string', 'number'].includes(typeof value) || String(value).trim() === '') return fallback;
+  const speed = numeric(value, null);
+  return Number.isInteger(speed) && speed >= 0 && speed <= 15 ? Math.floor(speed / 1.5) * 10 : fallback;
+}
+
+function normalizeFans(print, previous) {
+  const gear = print.fan_gear;
+  if (Number.isInteger(gear) && gear >= 0 && gear <= 0xffffffff) {
+    const bytePercent = (shift) => Math.round(((gear >>> shift) & 0xff) / 255 * 100);
+    return { partCooling: bytePercent(0), auxiliary: bytePercent(8), chamber: bytePercent(16) };
+  }
+  return {
+    partCooling: legacyFanPercent(print.cooling_fan_speed, previous.partCooling),
+    auxiliary: legacyFanPercent(print.big_fan1_speed, previous.auxiliary),
+    chamber: legacyFanPercent(print.big_fan2_speed, previous.chamber),
+  };
+}
+
+function reportedJobId(value) {
+  if (typeof value !== 'string' && !Number.isSafeInteger(value)) return null;
+  const id = String(value).trim();
+  return id && !/^(?:0+|-1)$/.test(id) ? id : null;
+}
+
+function normalizeJob(print, previous) {
+  const name = print.subtask_name || print.gcode_file;
+  const reportedIds = {};
+  for (const key of ['subtask_id', 'task_id', 'lan_task_id']) {
+    if (Object.hasOwn(print, key)) reportedIds[key] = reportedJobId(print[key]);
+  }
+  const ids = Object.entries(reportedIds);
+  if (!name && !ids.length && !['mc_percent', 'layer_num', 'total_layer_num', 'mc_remaining_time'].some((key) => print[key] != null)) return previous;
+
+  const previousIds = previous?.reportedIds ?? {};
+  const identityChanged = ids.some(([key, id]) => previousIds[key] && id !== previousIds[key]);
+  const identityMatches = ids.some(([key, id]) => id && id === previousIds[key]);
+  const nameChanged = name && previous?.reportedName && name !== previous.reportedName && !identityMatches;
+  const old = identityChanged || nameChanged ? null : previous;
+  const mergedIds = { ...old?.reportedIds, ...reportedIds };
+  const knownName = name || old?.reportedName;
+  const hasIdentity = knownName || Object.values(mergedIds).some(Boolean);
+  return {
+    // Some LAN jobs report placeholder IDs. Track a named job within its observed lifecycle.
+    id: hasIdentity ? old?.id ?? randomUUID() : null,
+    reportedIds: mergedIds,
+    reportedName: knownName ?? null,
+    name: knownName || '当前打印任务',
+    progress: numeric(print.mc_percent, old?.progress ?? 0),
+    layerCurrent: numeric(print.layer_num, old?.layerCurrent ?? 0),
+    layerTotal: numeric(print.total_layer_num, old?.layerTotal ?? 0),
+    remainingMinutes: numeric(print.mc_remaining_time, old?.remainingMinutes ?? 0),
+    elapsedMinutes: old?.elapsedMinutes ?? 0,
+  };
+}
+
+export function assertStopTarget(printer, expectedJobId) {
+  if (!printer.connected || !['printing', 'paused'].includes(printer.status)
+    || (printer.gcodeState != null && !['RUNNING', 'PAUSE'].includes(printer.gcodeState))
+    || typeof expectedJobId !== 'string' || !expectedJobId || printer.currentJob?.id !== expectedJobId) {
+    throw Object.assign(new Error('无法确认这是同一次打印任务，请同步设备状态后重新确认停止'), { statusCode: 409 });
+  }
 }
 
 export function emptyPrinter(config) {
@@ -34,6 +94,7 @@ export function emptyPrinter(config) {
     serial: config.serial,
     ip: config.ip,
     status: 'offline',
+    gcodeState: null,
     connected: false,
     currentJob: null,
     lastJob: null,
@@ -64,6 +125,7 @@ export function normalizeReport(previous, report, { amsModels = {} } = {}) {
     if (print.print_error != null) next.errorCode = numeric(print.print_error, previous.errorCode);
     const status = STATUS_MAP[print.gcode_state];
     if (status) next.status = status;
+    if (typeof print.gcode_state === 'string') next.gcodeState = print.gcode_state;
     next.temperatures = {
       nozzle: numeric(print.nozzle_temper, previous.temperatures.nozzle),
       nozzleTarget: numeric(print.nozzle_target_temper, previous.temperatures.nozzleTarget),
@@ -71,11 +133,7 @@ export function normalizeReport(previous, report, { amsModels = {} } = {}) {
       bedTarget: numeric(print.bed_target_temper, previous.temperatures.bedTarget),
       chamber: numeric(print.chamber_temper, previous.temperatures.chamber),
     };
-    next.fans = {
-      partCooling: print.cooling_fan_speed == null ? previous.fans.partCooling : fanPercent(print.cooling_fan_speed),
-      auxiliary: print.big_fan1_speed == null ? previous.fans.auxiliary : fanPercent(print.big_fan1_speed),
-      chamber: print.big_fan2_speed == null ? previous.fans.chamber : fanPercent(print.big_fan2_speed),
-    };
+    next.fans = normalizeFans(print, previous.fans);
     if (print.spd_lvl != null && SPEED_PROFILES[print.spd_lvl]) {
       next.speedLevel = Number(print.spd_lvl);
       next.speed = SPEED_PROFILES[print.spd_lvl];
@@ -89,21 +147,16 @@ export function normalizeReport(previous, report, { amsModels = {} } = {}) {
       next.ams = ams.units;
       next.amsState = ams.state;
     }
-    const jobName = print.subtask_name || print.gcode_file;
-    if (jobName || ['mc_percent', 'layer_num', 'total_layer_num', 'mc_remaining_time'].some((key) => print[key] != null)) {
-      const oldJob = jobName && jobName !== previous.currentJob?.name ? {} : previous.currentJob || {};
-      next.currentJob = {
-        name: jobName || oldJob.name || '当前打印任务',
-        progress: numeric(print.mc_percent, oldJob.progress || 0),
-        layerCurrent: numeric(print.layer_num, oldJob.layerCurrent || 0),
-        layerTotal: numeric(print.total_layer_num, oldJob.layerTotal || 0),
-        remainingMinutes: numeric(print.mc_remaining_time, oldJob.remainingMinutes || 0),
-        elapsedMinutes: oldJob.elapsedMinutes || 0,
-      };
-    }
-    if (['FINISH', 'IDLE'].includes(print.gcode_state)) {
-      next.lastJob = next.currentJob?.name || previous.lastJob;
+    if (['FINISH', 'IDLE', 'OFFLINE'].includes(next.gcodeState)) {
+      if (print.gcode_state === 'FINISH' || print.gcode_state === 'IDLE') {
+        next.lastJob = print.subtask_name || print.gcode_file || previous.currentJob?.name || previous.lastJob;
+      }
       next.currentJob = null;
+    } else {
+      const wasActive = ['RUNNING', 'PAUSE'].includes(previous.gcodeState);
+      const leftActive = wasActive && !['RUNNING', 'PAUSE'].includes(next.gcodeState);
+      next.currentJob = normalizeJob(print, leftActive ? null : previous.currentJob);
+      if (next.gcodeState === 'FAILED' && next.currentJob?.id) next.currentJob = { ...next.currentJob, id: null };
     }
   }
   return next;

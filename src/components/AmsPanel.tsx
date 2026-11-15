@@ -20,7 +20,7 @@ function Unit({ unit, printerOnline }: { unit: AmsUnit; printerOnline: boolean }
   const offline = !printerOnline || unit.present === false;
   const drying = unit.drying;
   const state = drying?.state ?? 'unknown';
-  const loaded = unit.trays.filter(tray => tray.empty === false).length;
+  const loaded = unit.present === false ? 0 : unit.trays.filter(tray => tray.empty === false).length;
   return (
     <article className={'ams-unit ' + (offline ? 'ams-offline' : '')} data-ams-id={unit.id}>
       <div className="ams-unit-heading">

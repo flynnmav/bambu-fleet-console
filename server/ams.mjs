@@ -185,7 +185,7 @@ export function normalizeAmsReport(report, previous = [], previousState, { amsMo
       else tray.active = state.trayNow == null || state.trayNow > 15 || index == null ? null : state.trayNow === index;
       if (tray.active) unit.activeTrayId = tray.id;
       if (tray.empty === true || unit.present === false) { clearTray(tray); tray.reading = false; tray.readDone = false; tray.isBambu = null; }
-      if (unit.present === false) tray.active = false;
+      if (unit.present === false) tray.empty = null;
     }
     let selectedSlot = null;
     if (slots.length) selectedSlot = slots.find(slot => slot?.unitId === unit.id)?.slotId ?? null;

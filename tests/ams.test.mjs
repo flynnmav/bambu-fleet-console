@@ -200,6 +200,24 @@ test('同一AMS移除后重新接入也需等待新遥测', () => {
   assert.equal(reattached.ams[0].trays.length, 0);
 });
 
+test('拔掉一个 AMS 会取消其装载确认，其他单元继续显示已装载耗材', () => {
+  const first = normalizeReport(start(), { print: { ams: {
+    ams_exist_bits: '3', tray_exist_bits: '11', ams: [
+      { id: '0', tray: [{ id: '0', tray_type: 'PLA' }] },
+      { id: '1', tray: [{ id: '0', tray_type: 'PETG', tag_uid: 'ABCD' }] },
+    ],
+  } } });
+  assert.equal(first.ams[1].trays[0].empty, false);
+  const removed = normalizeReport(first, { print: { ams: { ams_exist_bits: '1', tray_exist_bits: '11' } } });
+  assert.equal(removed.ams[0].present, true);
+  assert.equal(removed.ams[0].trays[0].empty, false);
+  assert.equal(removed.ams[0].trays[0].material, 'PLA');
+  assert.equal(removed.ams[1].present, false);
+  assert.equal(removed.ams[1].trays[0].empty, null);
+  assert.equal(removed.ams[1].trays[0].tagUid, null);
+  assert.equal(removed.ams[1].trays[0].active, false);
+});
+
 test('明确移除槽位时同时终止旧RFID读取状态', () => {
   const first = normalizeReport(start(), dryingReport);
   const removed = normalizeReport(first, { print: { ams: { tray_exist_bits: '0' } } });

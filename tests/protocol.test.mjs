@@ -32,7 +32,7 @@ test('状态报文映射打印进度、层数与温度', () => {
       layer_num: 20, total_layer_num: 50, mc_remaining_time: 33,
       nozzle_temper: 215.4, nozzle_target_temper: 220,
       bed_temper: 54.8, bed_target_temper: 55, chamber_temper: 35,
-      spd_lvl: 2, cooling_fan_speed: '80',
+      spd_lvl: 2, cooling_fan_speed: '12',
     },
   });
   assert.equal(state.status, 'printing');
@@ -41,6 +41,15 @@ test('状态报文映射打印进度、层数与温度', () => {
   assert.equal(state.currentJob.layerTotal, 50);
   assert.equal(state.temperatures.nozzleTarget, 220);
   assert.equal(state.fans.partCooling, 80);
+});
+
+test('风扇按旧协议缩放，fan_gear 按字节解码并优先于旧字段', () => {
+  const initial = normalizeReport(emptyPrinter(config), { print: { cooling_fan_speed: '15', big_fan1_speed: '6' } });
+  assert.deepEqual(initial.fans, { partCooling: 100, auxiliary: 40, chamber: 0 });
+  const packed = normalizeReport(initial, { print: { fan_gear: 0xff0080, cooling_fan_speed: '15' } });
+  assert.deepEqual(packed.fans, { partCooling: 50, auxiliary: 0, chamber: 100 });
+  const delta = normalizeReport(packed, { print: { cooling_fan_speed: '0' } });
+  assert.deepEqual(delta.fans, { partCooling: 0, auxiliary: 0, chamber: 100 });
 });
 
 test('缺失字段保留上一次状态而不是重置', () => {
@@ -79,6 +88,39 @@ test('更换任务不复用上个任务进度，回到空闲清除任务', () =>
   const idle = normalizeReport(changed, { print: { gcode_state: 'IDLE' } });
   assert.equal(idle.currentJob, null);
   assert.equal(idle.lastJob, 'B');
+  const delayedProgress = normalizeReport(idle, { print: { mc_percent: 100 } });
+  assert.equal(delayedProgress.currentJob, null);
+  assert.equal(delayedProgress.lastJob, 'B');
+});
+
+for (const key of ['subtask_id', 'task_id', 'lan_task_id']) {
+  test(`同名打印的 ${key} 改变时重置进度，普通增量保留任务身份`, () => {
+    const first = normalizeReport(emptyPrinter(config), { print: {
+      gcode_state: 'RUNNING', subtask_name: 'same.gcode', [key]: '101', mc_percent: 87,
+      layer_num: 42, total_layer_num: 48, mc_remaining_time: 4,
+    } });
+    const same = normalizeReport(first, { print: { layer_num: 43 } });
+    assert.equal(same.currentJob.id, first.currentJob.id);
+    assert.equal(same.currentJob.progress, 87);
+    const next = normalizeReport(same, { print: { subtask_name: 'same.gcode', [key]: '102' } });
+    assert.notEqual(next.currentJob.id, first.currentJob.id);
+    assert.equal(next.currentJob.name, 'same.gcode');
+    assert.equal(next.currentJob.progress, 0);
+    assert.equal(next.currentJob.layerCurrent, 0);
+    assert.equal(next.currentJob.layerTotal, 0);
+    assert.equal(next.currentJob.remainingMinutes, 0);
+  });
+}
+
+test('同名局域网任务进入 PREPARE 时清除上一任务进度', () => {
+  const running = normalizeReport(emptyPrinter(config), { print: {
+    gcode_state: 'RUNNING', gcode_file: 'local.gcode', task_id: '0', subtask_id: '0', mc_percent: 92,
+  } });
+  const prepare = normalizeReport(running, { print: { gcode_state: 'PREPARE', gcode_file: 'local.gcode' } });
+  const next = normalizeReport(prepare, { print: { gcode_state: 'RUNNING' } });
+  assert.equal(next.currentJob.name, 'local.gcode');
+  assert.equal(next.currentJob.progress, 0);
+  assert.notEqual(next.currentJob.id, running.currentJob.id);
 });
 
 test('保留打印失败错误码供界面展示', () => {

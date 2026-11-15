@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
+import { Duplex } from 'node:stream';
+import mqtt from 'mqtt';
 import { BambuFleet } from '../server/bambu-fleet.mjs';
 
 class FakeClient extends EventEmitter {
@@ -75,6 +78,122 @@ test('投递未确认时有限等待并返回状态未知', async () => {
   await assert.rejects(fleet.command('printer-0', 'pause'), (error) => error.statusCode === 504 && error.message.includes('执行状态未知'));
   await fleet.close();
 });
+
+test('原任务已被替换或断线重连时，旧确认不能投递停止指令', async () => {
+  const { fleet, clients: [client] } = fixture();
+  const reportJob = (subtask_id) => client.emit('message', 'device/FIRST/report', Buffer.from(JSON.stringify({
+    print: { gcode_state: 'RUNNING', subtask_name: 'same.gcode', subtask_id },
+  })));
+  connect(client);
+  reportJob('101');
+  const firstJob = fleet.getPrinters()[0].currentJob.id;
+  reportJob('102');
+  const secondJob = fleet.getPrinters()[0].currentJob.id;
+  await assert.rejects(fleet.command('printer-0', 'stop', undefined, firstJob), { statusCode: 409 });
+
+  client.emit('close');
+  connect(client);
+  reportJob('102');
+  await assert.rejects(fleet.command('printer-0', 'stop', undefined, secondJob), { statusCode: 409 });
+  assert.equal(client.sent.some(({ payload }) => payload.print?.command === 'stop'), false);
+  await fleet.command('printer-0', 'stop', undefined, fleet.getPrinters()[0].currentJob.id);
+  assert.equal(client.sent.filter(({ payload }) => payload.print?.command === 'stop').length, 1);
+  await fleet.close();
+});
+
+test('未收到任务名称或设备任务 ID 时不投递停止指令', async () => {
+  const { fleet, clients: [client] } = fixture();
+  connect(client);
+  client.emit('message', 'device/FIRST/report', Buffer.from(JSON.stringify({
+    print: { gcode_state: 'RUNNING', subtask_id: '0', task_id: '0', mc_percent: 12 },
+  })));
+  assert.equal(fleet.getPrinters()[0].currentJob.id, null);
+  await assert.rejects(fleet.command('printer-0', 'stop'), { statusCode: 409 });
+  assert.equal(client.sent.some(({ payload }) => payload.print?.command === 'stop'), false);
+  await fleet.close();
+});
+
+test('局域网重打同名文件时，只接受当前运行周期的停止确认', async () => {
+  const { fleet, clients: [client] } = fixture();
+  const reportJob = (gcode_state) => client.emit('message', 'device/FIRST/report', Buffer.from(JSON.stringify({
+    print: { gcode_state, subtask_name: 'local.gcode', subtask_id: '0', task_id: '0' },
+  })));
+  connect(client);
+  reportJob('RUNNING');
+  const firstJob = fleet.getPrinters()[0].currentJob.id;
+  assert.ok(firstJob);
+  reportJob('PREPARE');
+  await assert.rejects(fleet.command('printer-0', 'stop', undefined, firstJob), { statusCode: 409 });
+  reportJob('RUNNING');
+  await assert.rejects(fleet.command('printer-0', 'stop', undefined, firstJob), { statusCode: 409 });
+  assert.equal(client.sent.some(({ payload }) => payload.print?.command === 'stop'), false);
+  await fleet.command('printer-0', 'stop', undefined, fleet.getPrinters()[0].currentJob.id);
+  assert.equal(client.sent.filter(({ payload }) => payload.print?.command === 'stop').length, 1);
+  await fleet.close();
+});
+
+function mqttStreamFixture(onPublish) {
+  const require = createRequire(import.meta.resolve('mqtt'));
+  const { parser, generate } = require('mqtt-packet');
+  const decode = parser();
+  const stream = new Duplex({
+    read() {},
+    write(chunk, _encoding, done) {
+      decode.parse(chunk);
+      done();
+    },
+  });
+  const respond = (packet) => queueMicrotask(() => {
+    if (!stream.destroyed) stream.push(generate(packet));
+  });
+  decode.on('packet', (packet) => {
+    if (packet.cmd === 'connect') respond({ cmd: 'connack', returnCode: 0, sessionPresent: false });
+    if (packet.cmd === 'subscribe') respond({ cmd: 'suback', messageId: packet.messageId, granted: [1] });
+    if (packet.cmd === 'publish' && onPublish(JSON.parse(packet.payload.toString()))) {
+      respond({ cmd: 'puback', messageId: packet.messageId });
+    }
+  });
+  return stream;
+}
+
+for (const failure of ['timeout', 'disconnect']) {
+  test(`MQTT ${failure} 后取消未确认的控制指令，重连不会重发`, { timeout: 2000 }, async (t) => {
+    const deliveries = [];
+    const [firstReady, secondReady] = [Promise.withResolvers(), Promise.withResolvers()];
+    const firstCommand = Promise.withResolvers();
+    let connectionCount = 0;
+    let stream;
+    let client;
+    const config = { id: 'one', name: 'ONE', serial: 'ONE', ip: '192.0.2.1', accessCode: 'fixture', caCertificate: Buffer.from('fixture') };
+    const fleet = new BambuFleet([config], { commandTimeoutMs: 75, connect: (_, options) => {
+      client = new mqtt.MqttClient(() => {
+        const connection = ++connectionCount;
+        stream = mqttStreamFixture((payload) => {
+          if (payload.info?.command === 'get_version') (connection === 1 ? firstReady : secondReady).resolve();
+          if (payload.print?.command !== 'pause') return true;
+          deliveries.push(connection);
+          if (connection !== 1) return true;
+          firstCommand.resolve();
+          return false;
+        });
+        return stream;
+      }, { ...options, reconnectPeriod: 10 });
+      return client;
+    } });
+    t.after(() => client.endAsync(true));
+    await firstReady.promise;
+    const command = fleet.command('one', 'pause');
+    const rejection = assert.rejects(command, { statusCode: failure === 'timeout' ? 504 : 503 });
+    await firstCommand.promise;
+    if (failure === 'disconnect') stream.destroy();
+    await rejection;
+    assert.equal(fleet.getPrinters()[0].lastCommand.result, 'unknown');
+    if (failure === 'timeout') stream.destroy();
+    await secondReady.promise;
+    assert.deepEqual(deliveries, [1]);
+    await fleet.command('one', 'resume');
+  });
+}
 
 test('设备拒绝响应只更新对应序号，且不伪造状态同步时间', async () => {
   const { fleet, clients } = fixture();
