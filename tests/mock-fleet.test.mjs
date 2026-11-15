@@ -19,7 +19,11 @@ test('演示服务可以暂停并继续第一台设备而不影响第二台', as
 
 test('演示停止会清空当前任务并保留上一任务名称', async () => {
   const fleet = new MockFleet();
-  await fleet.command('h2s', 'stop');
+  const expectedJobId = fleet.getPrinters()[0].currentJob.id;
+  await assert.rejects(fleet.command('h2s', 'stop'), { statusCode: 409 });
+  await assert.rejects(fleet.command('h2s', 'stop', undefined, 'old-job'), { statusCode: 409 });
+  assert.equal(fleet.getPrinters()[0].status, 'printing');
+  await fleet.command('h2s', 'stop', undefined, expectedJobId);
   const printer = fleet.getPrinters()[0];
   assert.equal(printer.status, 'idle');
   assert.equal(printer.currentJob, null);

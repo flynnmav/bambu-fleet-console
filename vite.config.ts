@@ -6,6 +6,9 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
+    fs: {
+      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/config/printers.local.json'],
+    },
     proxy: {
       '/api': 'http://127.0.0.1:8787',
     },

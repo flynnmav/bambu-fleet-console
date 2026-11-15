@@ -5,6 +5,7 @@ import {
   RefreshCw, Settings2, ShieldCheck, TriangleAlert, Wifi, X,
 } from 'lucide-react';
 import { getPrinters, sendPrinterCommand } from './lib/api';
+import { createFleetRefresh } from './lib/fleet-refresh';
 import type { FleetResponse, Printer, PrinterCommand, PrinterStatus } from './types';
 import { PrinterCard } from './components/PrinterCard';
 import { PrinterDetails } from './components/PrinterDetails';
@@ -12,6 +13,7 @@ import { Modal } from './components/Modal';
 
 type Filter = 'all' | PrinterStatus;
 type Toast = { id: number; message: string; kind: 'success' | 'error' };
+type RefreshSource = 'poll' | 'manual' | 'command';
 
 function App() {
   const [fleet, setFleet] = useState<FleetResponse | null>(null);
@@ -25,35 +27,40 @@ function App() {
   const [modal, setModal] = useState<'settings' | 'help' | null>(null);
   const [stopPrinter, setStopPrinter] = useState<Printer | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [fleetRefresh] = useState(() => createFleetRefresh(getPrinters));
 
   const showToast = useCallback((message: string, kind: Toast['kind'] = 'success') => {
     setToast({ id: Date.now(), message, kind });
   }, []);
 
-  const loadPrinters = useCallback(async (manual = false) => {
-    if (manual) setRefreshing(true);
-    try {
-      const data = await getPrinters();
-      setFleet(data);
-      setSelectedId((current) => current ?? data.printers[0]?.id ?? null);
-      setError('');
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '无法连接本地服务');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const loadPrinters = useCallback((source: RefreshSource = 'poll') => {
+    if (source === 'manual') setRefreshing(true);
+    return fleetRefresh.run(source !== 'poll', {
+      onResult: (data) => {
+        setFleet(data);
+        setSelectedId((current) => current ?? data.printers[0]?.id ?? null);
+        setError('');
+      },
+      onError: (reason) => setError(reason instanceof Error ? reason.message : '无法连接本地服务'),
+      onSettled: () => {
+        setLoading(false);
+        setRefreshing(false);
+      },
+    });
+  }, [fleetRefresh]);
 
   useEffect(() => {
     loadPrinters();
     const interval = window.setInterval(() => loadPrinters(), 5000);
-    return () => window.clearInterval(interval);
-  }, [loadPrinters]);
+    return () => {
+      window.clearInterval(interval);
+      fleetRefresh.cancel();
+    };
+  }, [fleetRefresh, loadPrinters]);
 
   useEffect(() => {
     const refreshShortcut = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === 'r' && !modal && !stopPrinter && !(event.target instanceof HTMLInputElement)) loadPrinters(true);
+      if (event.key.toLowerCase() === 'r' && !modal && !stopPrinter && !(event.target instanceof HTMLInputElement)) loadPrinters('manual');
     };
     window.addEventListener('keydown', refreshShortcut);
     return () => window.removeEventListener('keydown', refreshShortcut);
@@ -67,32 +74,38 @@ function App() {
 
   const printers = useMemo(() => fleet?.printers ?? [], [fleet]);
   const selected = printers.find((printer) => printer.id === selectedId) ?? printers[0];
+  const stopTarget = printers.find((printer) => printer.id === stopPrinter?.id);
+  const expectedJobId = stopPrinter?.currentJob?.id;
+  const canStop = !!expectedJobId && stopTarget?.connected && stopTarget.currentJob?.id === expectedJobId
+    && (stopTarget.status === 'printing' || stopTarget.status === 'paused')
+    && (stopTarget.gcodeState == null || ['RUNNING', 'PAUSE'].includes(stopTarget.gcodeState));
   const visible = printers.filter((printer) => filter === 'all' || printer.status === filter);
   const online = printers.filter((printer) => printer.connected).length;
   const printing = printers.filter((printer) => printer.status === 'printing').length;
   const trayCount = printers.reduce((sum, printer) => sum + (printer.connected ? printer.ams.filter(unit => unit.present !== false).flatMap(unit => unit.trays).filter(tray => tray.empty === false).length : 0), 0);
 
-  async function handleCommand(id: string, command: PrinterCommand, value?: boolean | number) {
+  async function handleCommand(id: string, command: PrinterCommand, value?: boolean | number, expectedJobId?: string) {
     const printer = printers.find((item) => item.id === id);
     if (commandLocks.current.has(id)) return false;
     commandLocks.current.add(id);
     setBusyIds(new Set(commandLocks.current));
+    let accepted = false;
     try {
-      const result = await sendPrinterCommand(id, command, value);
-      setFleet((current) => current ? { ...current, printers: current.printers.map((item) => item.id === id ? result.printer : item) } : current);
+      const result = await sendPrinterCommand(id, command, value, expectedJobId);
       showToast(`${printer?.name ?? '设备'}：${result.message}`);
-      return true;
+      accepted = true;
     } catch (reason) {
       showToast(reason instanceof Error ? reason.message : '控制指令发送失败', 'error');
-      return false;
     } finally {
+      await loadPrinters('command');
       commandLocks.current.delete(id);
       setBusyIds(new Set(commandLocks.current));
     }
+    return accepted;
   }
 
   if (loading) return <div className="full-state"><div className="brand-loader"><Layers3 size={30} /></div><LoaderCircle className="spin" size={22} /><p>正在唤醒你的打印工作空间…</p></div>;
-  if (!fleet) return <div className="full-state"><div className="error-symbol"><TriangleAlert size={28} /></div><h1>暂时无法连接控制台</h1><p>{error}</p><button className="primary-button" onClick={() => { setLoading(true); loadPrinters(true); }}><RefreshCw size={16} />重新连接</button><small>请确认本地服务已经启动</small></div>;
+  if (!fleet) return <div className="full-state"><div className="error-symbol"><TriangleAlert size={28} /></div><h1>暂时无法连接控制台</h1><p>{error}</p><button className="primary-button" onClick={() => { setLoading(true); loadPrinters('manual'); }}><RefreshCw size={16} />重新连接</button><small>请确认本地服务已经启动</small></div>;
 
   return (
     <div className="app-shell">
@@ -114,11 +127,11 @@ function App() {
           <div className="top-actions">
             <span className={'mode-badge ' + fleet.mode}><i />{fleet.mode === 'demo' ? '演示空间' : '局域网已接入'}</span>
             <button className="top-icon" onClick={() => setModal('help')} aria-label="打开帮助"><CircleHelp size={18} /></button>
-            <button className="sync-button" onClick={() => loadPrinters(true)} disabled={refreshing}><RefreshCw size={14} className={refreshing ? 'spin' : ''} /><span>{refreshing ? '正在同步' : '同步设备'}</span><kbd>R</kbd></button>
+            <button className="sync-button" onClick={() => loadPrinters('manual')} disabled={refreshing}><RefreshCw size={14} className={refreshing ? 'spin' : ''} /><span>{refreshing ? '正在同步' : '同步设备'}</span><kbd>R</kbd></button>
           </div>
         </header>
         <div className="content-wrap">
-          {error && <div className="connection-warning"><TriangleAlert size={16} />状态刷新失败：{error}<button onClick={() => loadPrinters(true)}>重试</button></div>}
+          {error && <div className="connection-warning"><TriangleAlert size={16} />状态刷新失败：{error}<button onClick={() => loadPrinters('manual')}>重试</button></div>}
           <section className="hero-section">
             <div><div className="eyebrow"><span />YOUR PERSONAL MICRO FACTORY</div><h1>打印工作台<span>.</span></h1><p>看见每台机器，让灵感逐层成型。</p></div>
             <div className="workspace-metrics" aria-label="设备统计">
@@ -169,8 +182,8 @@ function App() {
 
       {stopPrinter && <Modal title="停止当前打印？" eyebrow="CONFIRM ACTION" onClose={() => setStopPrinter(null)} className="confirm-modal">
         <div className="stop-warning"><span><TriangleAlert size={24} /></span><div><strong>{stopPrinter.name}</strong><p>{stopPrinter.currentJob?.name}</p></div></div>
-        <p className="confirm-copy">停止后，当前打印任务将无法从此位置继续。请确认不再需要这次打印。</p>
-        <div className="modal-actions"><button className="secondary-button" onClick={() => setStopPrinter(null)}>保留任务</button><button className="danger-button" disabled={busyIds.has(stopPrinter.id)} onClick={async () => { if (await handleCommand(stopPrinter.id, 'stop')) setStopPrinter(null); }}>{busyIds.has(stopPrinter.id) ? <LoaderCircle className="spin" size={16} /> : <X size={16} />}确认停止</button></div>
+        <p className="confirm-copy">{canStop ? '停止后，当前打印任务将无法从此位置继续。请确认不再需要这次打印。' : '无法确认原任务仍在运行，请关闭窗口并核对设备状态。'}</p>
+        <div className="modal-actions"><button className="secondary-button" onClick={() => setStopPrinter(null)}>保留任务</button><button className="danger-button" disabled={!canStop || busyIds.has(stopPrinter.id)} onClick={async () => { if (canStop && await handleCommand(stopPrinter.id, 'stop', undefined, expectedJobId)) setStopPrinter(null); }}>{busyIds.has(stopPrinter.id) ? <LoaderCircle className="spin" size={16} /> : <X size={16} />}确认停止</button></div>
       </Modal>}
 
       {toast && <div className={`toast ${toast.kind}`} role="status"><span>{toast.kind === 'success' ? <CheckCircle2 size={19} /> : <TriangleAlert size={19} />}</span><p>{toast.message}</p><button onClick={() => setToast(null)} aria-label="关闭提示"><X size={16} /></button></div>}

@@ -1,10 +1,10 @@
-import { createCommand, SPEED_PROFILES } from './protocol.mjs';
+import { assertStopTarget, createCommand, SPEED_PROFILES } from './protocol.mjs';
 
 const initialPrinters = [
   {
     id: 'h2s', name: 'H2S · 主力打印', model: 'H2S', serial: 'DEMO-H2S-001', ip: '192.168.1.101',
     status: 'printing', connected: true,
-    currentJob: { name: '齿轮传动盒_v12.gcode', progress: 68, layerCurrent: 172, layerTotal: 252, elapsedMinutes: 112, remainingMinutes: 74 },
+    currentJob: { id: 'demo-h2s-job', name: '齿轮传动盒_v12.gcode', progress: 68, layerCurrent: 172, layerTotal: 252, elapsedMinutes: 112, remainingMinutes: 74 },
     lastJob: '旋翼固定座_v8.gcode',
     temperatures: { nozzle: 218, nozzleTarget: 220, bed: 55, bedTarget: 55, chamber: 36 },
     fans: { partCooling: 80, auxiliary: 60, chamber: 35 },
@@ -41,7 +41,7 @@ export class MockFleet {
     return copy(this.printers);
   }
 
-  async command(id, command, value) {
+  async command(id, command, value, expectedJobId) {
     createCommand(command, value);
     const printer = this.printers.find((item) => item.id === id);
     if (!printer) {
@@ -51,7 +51,8 @@ export class MockFleet {
     }
     if (command === 'pause' && printer.status === 'printing') printer.status = 'paused';
     if (command === 'resume' && printer.status === 'paused') printer.status = 'printing';
-    if (command === 'stop' && ['printing', 'paused'].includes(printer.status)) {
+    if (command === 'stop') {
+      assertStopTarget(printer, expectedJobId);
       printer.lastJob = printer.currentJob?.name || printer.lastJob;
       printer.currentJob = null;
       printer.status = 'idle';

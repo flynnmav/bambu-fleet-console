@@ -38,6 +38,7 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
   const status = STATUS[printer.status];
   const active = printer.status === 'printing' || printer.status === 'paused';
   const job = printer.currentJob;
+  const canStop = job?.id && (printer.gcodeState == null || ['RUNNING', 'PAUSE'].includes(printer.gcodeState));
   const progress = Math.min(100, Math.max(0, job?.progress ?? 0));
   const modelWord = printer.model.toUpperCase().replace('CARBON', '').trim();
   return (
@@ -82,7 +83,7 @@ export function PrinterCard({ printer, index, selected, busy, onSelect, onComman
           <button className="speed-button" disabled={busy || !printer.connected} onClick={() => setSpeedOpen(!speedOpen)} aria-expanded={speedOpen}><Gauge size={15} /><span>{printer.speed.percent}%<small>{printer.speed.label}</small></span><ChevronDown size={13} /></button>
           {speedOpen && <div className="speed-menu"><span className="menu-title">打印速度</span>{SPEEDS.map(speed => <button key={speed.level} className={printer.speedLevel === speed.level ? 'active' : ''} disabled={busy || !printer.connected} onClick={async () => { if (await onCommand('speed', speed.level)) setSpeedOpen(false); }}><span>{speed.label}<small>{speed.percent}%</small></span>{printer.speedLevel === speed.level && <Check size={15} />}</button>)}</div>}
         </div>
-        {active && <button className="control-icon stop-button" disabled={busy || !printer.connected} onClick={onStop} title="停止打印" aria-label={'停止 ' + printer.name + ' 当前打印'}><Square size={13} fill="currentColor" /></button>}
+        {active && <button className="control-icon stop-button" disabled={busy || !printer.connected || !canStop} onClick={onStop} title={canStop ? '停止打印' : '尚未确认当前打印任务'} aria-label={'停止 ' + printer.name + ' 当前打印'}><Square size={13} fill="currentColor" /></button>}
       </div>
     </article>
   );

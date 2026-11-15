@@ -1,5 +1,5 @@
 import mqtt from 'mqtt';
-import { createCommand, emptyPrinter, normalizeReport } from './protocol.mjs';
+import { assertStopTarget, createCommand, emptyPrinter, normalizeReport } from './protocol.mjs';
 
 class BambuConnection {
   constructor(config, { connect = mqtt.connect, commandTimeoutMs = 8000 } = {}) {
@@ -17,10 +17,10 @@ class BambuConnection {
         : { rejectUnauthorized: false }),
       connectTimeout: 6000,
       reconnectPeriod: 5000,
+      resubscribe: false,
     });
     if (!config.caCertificate) console.warn(`[${config.name}] 未配置 BBL CA，当前仅加密传输但未完整校验设备证书`);
     this.client.on('connect', () => {
-      this.state.connected = true;
       this.client.subscribe(`device/${config.serial}/report`, { qos: 1 }, (error, granted) => {
         if (error || granted?.some((item) => item.qos === 128)) {
           console.warn(`[${config.name}] 状态主题订阅失败`);
@@ -28,6 +28,7 @@ class BambuConnection {
           this.state.status = 'offline';
           return;
         }
+        this.state.connected = true;
         this.requestStatus();
       });
     });
@@ -48,7 +49,6 @@ class BambuConnection {
             reason: response.reason == null ? String(response.result) : String(response.reason),
           };
         }
-        this.state.connected = true;
       } catch {
         console.warn(`[${config.name}] 收到无法解析的状态报文`);
       }
@@ -56,6 +56,8 @@ class BambuConnection {
     this.client.on('close', () => {
       this.state.connected = false;
       this.state.status = 'offline';
+      this.state.gcodeState = null;
+      this.state.currentJob = null;
     });
     this.client.on('error', (error) => {
       console.warn(`[${config.name}] MQTT 连接异常：${error.message}`);
@@ -79,32 +81,51 @@ class BambuConnection {
     );
   }
 
-  async command(command, value) {
+  async command(command, value, expectedJobId) {
     if (!this.state.connected) {
       const error = new Error('打印机当前不在线，指令未发送');
       error.statusCode = 409;
       throw error;
     }
+    if (command === 'stop') assertStopTarget(this.state, expectedJobId);
     const payload = createCommand(command, value, ++this.sequenceId);
     const envelope = payload.print || payload.system;
     const sequenceId = envelope.sequence_id;
     this.state.lastCommand = { sequenceId, command: envelope.command, result: 'sending', reason: '正在投递' };
     try {
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          const error = new Error('指令投递超时，执行状态未知，请核对设备状态后再操作');
-          error.statusCode = 504;
-          reject(error);
-        }, this.commandTimeoutMs);
-        this.client.publish(
-          `device/${this.config.serial}/request`,
-          JSON.stringify(payload),
-          { qos: 1 },
-          (error) => {
-            clearTimeout(timeout);
-            error ? reject(error) : resolve();
-          },
-        );
+        let messageId;
+        const finish = (error) => {
+          clearTimeout(timeout);
+          this.client.off('close', disconnected);
+          if (error) reject(error);
+          else resolve();
+        };
+        const cancel = (error) => {
+          finish(error);
+          if (messageId != null) this.client.removeOutgoingMessage(messageId);
+        };
+        const disconnected = () => cancel(Object.assign(new Error('投递期间 MQTT 连接断开，执行状态未知'), { statusCode: 503 }));
+        const timeout = setTimeout(() => cancel(Object.assign(
+          new Error('指令投递超时，执行状态未知，请核对设备状态后再操作'), { statusCode: 504 },
+        )), this.commandTimeoutMs);
+        this.client.once('close', disconnected);
+        try {
+          this.client.publish(
+            `device/${this.config.serial}/request`,
+            JSON.stringify(payload),
+            {
+              qos: 1,
+              // MQTT.js calls this after its in-memory store records the outgoing packet ID.
+              cbStorePut: (error) => {
+                if (!error) messageId = this.client.getLastMessageId();
+              },
+            },
+            finish,
+          );
+        } catch (error) {
+          cancel(error);
+        }
       });
       if (this.state.lastCommand?.sequenceId === sequenceId && this.state.lastCommand.result === 'sending') {
         this.state.lastCommand = { ...this.state.lastCommand, result: 'sent', reason: '已投递，等待设备状态或响应' };
@@ -146,7 +167,7 @@ export class BambuFleet {
     return this.connections.map((connection) => connection.state);
   }
 
-  async command(id, command, value) {
+  async command(id, command, value, expectedJobId) {
     const connection = this.connections.find((item) => item.config.id === id);
     if (!connection) {
       const error = new Error('未找到打印机');
@@ -154,7 +175,7 @@ export class BambuFleet {
       throw error;
     }
     createCommand(command, value);
-    return connection.command(command, value);
+    return connection.command(command, value, expectedJobId);
   }
 
   async close() {
